@@ -52,6 +52,7 @@
     <Reference Include="System.DirectoryServices" />
     <Reference Include="System.DirectoryServices.AccountManagement" />
     <Reference Include="System.IdentityModel" />
+    <Reference Include="System.Runtime.Caching" />
     <Reference Include="System.Runtime.Serialization" />
     <Reference Include="System.Security" />
     <Reference Include="System.ServiceModel" />
@@ -65,6 +66,12 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="Caching\ServiceManagerCache.cs" />
+    <Compile Include="Caching\CacheStrategies.cs" />
+    <Compile Include="Caching\ICacheStrategy.cs" />
+    <Compile Include="Caching\MemoryCacheStrategy.cs" />
+    <Compile Include="Caching\NoCacheStrategy.cs" />
+    <Compile Include="Caching\WebCacheStrategy.cs" />
     <Compile Include="Client\AutoRefreshSecurityToken.cs" />
     <Compile Include="Client\Enums.cs" />
     <Compile Include="Client\ILocalResults.cs" />
@@ -84,7 +91,6 @@
     <Compile Include="Sdk\deviceidmanager.cs" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="Helpers\CacheHelper.cs" />
     <None Include="packages.config" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />

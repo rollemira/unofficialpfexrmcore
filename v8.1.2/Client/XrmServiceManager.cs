@@ -17,6 +17,7 @@ using System;
 using System.Net;
 using System.ServiceModel.Description;
 using Microsoft.Crm.Services.Utility;
+using Microsoft.Pfe.Xrm.Caching;
 using Microsoft.Xrm.Sdk;
 using Microsoft.Xrm.Sdk.Client;
 using Microsoft.Xrm.Sdk.Discovery;
@@ -144,6 +145,8 @@ namespace Microsoft.Pfe.Xrm
         /// </summary>
         /// <param name="serviceUri">The service endpoint location</param>
         /// <param name="credentials">The auth credentials</param>
+        /// <param name="cacheStrategy"/>
+        /// <see cref="ICacheStrategy"/>
         /// <remarks>
         ///     <see cref="AuthenticationCredentials" /> can represent AD, Claims, or Cross-realm Claims
         ///     <see cref="ClientCredentials" />
@@ -151,8 +154,8 @@ namespace Microsoft.Pfe.Xrm
         ///     For cross-realm (federated) scenarios it can contain a HomeRealm Uri by itself, or also include a
         ///     <see cref="SecurityTokenResponse" /> from the federated realm
         /// </remarks>
-        public OrganizationServiceManager(Uri serviceUri, AuthenticationCredentials credentials) : base(serviceUri,
-            credentials)
+        public OrganizationServiceManager(Uri serviceUri, AuthenticationCredentials credentials, ICacheStrategy cacheStrategy = null) : base(serviceUri,
+            credentials, cacheStrategy)
         {
         }
 
@@ -164,8 +167,25 @@ namespace Microsoft.Pfe.Xrm
         /// <param name="password">The password of the identity to authenticate</param>
         /// <param name="domain">Optional parameter for specifying the domain (when known)</param>
         /// <param name="homeRealm">Optional parameter for specifying the federated home realm location (when known)</param>
+        /// <param name="cacheStrategy"/>
+        /// <see cref="ICacheStrategy"/>
+        public OrganizationServiceManager(Uri serviceUri, string username, string password, 
+            ICacheStrategy cacheStrategy = null) : base(serviceUri, username, password, null, null, cacheStrategy)
+        {
+        }
+
+        /// <summary>
+        ///     Establishes an <see cref="IOrganizationService" /> configuration at Uri location using supplied identity details
+        /// </summary>
+        /// <param name="serviceUri">The service endpoint location</param>
+        /// <param name="username">The username of the identity to authenticate</param>
+        /// <param name="password">The password of the identity to authenticate</param>
+        /// <param name="domain">Optional parameter for specifying the domain (when known)</param>
+        /// <param name="homeRealm">Optional parameter for specifying the federated home realm location (when known)</param>
+        /// <param name="cacheStrategy"/>
+        /// <see cref="ICacheStrategy"/>
         public OrganizationServiceManager(Uri serviceUri, string username, string password, string domain = null,
-            Uri homeRealm = null) : base(serviceUri, username, password, domain, homeRealm)
+            Uri homeRealm = null, ICacheStrategy cacheStrategy = null) : base(serviceUri, username, password, domain, homeRealm, cacheStrategy)
         {
         }
 
@@ -175,6 +195,8 @@ namespace Microsoft.Pfe.Xrm
         /// </summary>
         /// <param name="serviceManagement">The established service configuration management object</param>
         /// <param name="credentials">The auth credentials</param>
+        /// <param name="cacheStrategy"/>
+        /// <see cref="ICacheStrategy"/>
         /// <remarks>
         ///     <see cref="AuthenticationCredentials" /> can represent AD, Claims, or Cross-realm Claims
         ///     <see cref="ClientCredentials" />
@@ -183,7 +205,7 @@ namespace Microsoft.Pfe.Xrm
         ///     <see cref="SecurityTokenResponse" /> from the federated realm
         /// </remarks>
         public OrganizationServiceManager(IServiceManagement<IOrganizationService> serviceManagement,
-            AuthenticationCredentials credentials) : base(serviceManagement, credentials)
+            AuthenticationCredentials credentials, ICacheStrategy cacheStrategy = null) : base(serviceManagement, credentials, cacheStrategy)
         {
         }
 
@@ -191,11 +213,13 @@ namespace Microsoft.Pfe.Xrm
         ///     Manages an established <see cref="IOrganizationService" /> configuration using DefaultNetworkCredentials
         /// </summary>
         /// <param name="serviceManagement">The established service configuration management object</param>
+        /// <param name="cacheStrategy"/>
+        /// <see cref="ICacheStrategy"/>
         /// <remarks>
         ///     This approach authenticates using DefaultNetworkCredentials (AD) since no credentials are supplied
         /// </remarks>
-        public OrganizationServiceManager(IServiceManagement<IOrganizationService> serviceManagement) :
-            base(serviceManagement)
+        public OrganizationServiceManager(IServiceManagement<IOrganizationService> serviceManagement, ICacheStrategy cacheStrategy = null) :
+            base(serviceManagement, cacheStrategy)
         {
         }
 
@@ -203,11 +227,13 @@ namespace Microsoft.Pfe.Xrm
         ///     Manages an established <see cref="IOrganizationService" /> configuration using DefaultNetworkCredentials
         /// </summary>
         /// <param name="serviceUri">Uri to use for establishing <see cref="IServiceManagement" /></param>
+        /// <param name="cacheStrategy"/>
+        /// <see cref="ICacheStrategy"/>
         /// <remarks>
         ///     This approach authenticates using DefaultNetworkCredentials (AD only) since no credentials are supplied
         /// </remarks>
-        public OrganizationServiceManager(Uri serviceUri) : base(ServiceConfigurationFactory
-            .CreateManagement<IOrganizationService>(serviceUri))
+        public OrganizationServiceManager(Uri serviceUri, ICacheStrategy cacheStrategy = null) : this(ServiceConfigurationFactory
+            .CreateManagement<IOrganizationService>(serviceUri), cacheStrategy)
         {
         }
 
@@ -244,6 +270,7 @@ namespace Microsoft.Pfe.Xrm
         ///     Default constructor
         /// </summary>
         private XrmServiceManager()
+            : base(new NoCacheStrategy())
         {
             throw new NotImplementedException("Default constructor not implemented");
         }
@@ -256,6 +283,8 @@ namespace Microsoft.Pfe.Xrm
         /// </summary>
         /// <param name="serviceUri">The service endpoint location</param>
         /// <param name="credentials">The auth credentials</param>
+        /// <param name="cacheStrategy"/>
+        /// <see cref="ICacheStrategy"/>
         /// <remarks>
         ///     <see cref="AuthenticationCredentials" /> can represent AD, Claims, or Cross-realm Claims
         ///     <see cref="ClientCredentials" />
@@ -263,7 +292,8 @@ namespace Microsoft.Pfe.Xrm
         ///     For cross-realm (federated) scenarios it can contain a HomeRealm Uri by itself, or also include a
         ///     <see cref="SecurityTokenResponse" /> from the federated realm
         /// </remarks>
-        protected XrmServiceManager(Uri serviceUri, AuthenticationCredentials credentials)
+        protected XrmServiceManager(Uri serviceUri, AuthenticationCredentials credentials, ICacheStrategy cacheStrategy = null)
+            : base(cacheStrategy)
         {
             ServiceUri = serviceUri;
             ServiceManagement = ServiceConfigurationFactory.CreateManagement<TService>(serviceUri);
@@ -279,8 +309,11 @@ namespace Microsoft.Pfe.Xrm
         /// <param name="password">The password of the identity to authenticate</param>
         /// <param name="domain">Optional parameter for specifying the domain (when known)</param>
         /// <param name="homeRealm">Optional parameter for specifying the federated home realm location (when known)</param>
+        /// <param name="cacheStrategy"/>
+        /// <see cref="ICacheStrategy"/>
         protected XrmServiceManager(Uri serviceUri, string username, string password, string domain = null,
-            Uri homeRealm = null)
+            Uri homeRealm = null, ICacheStrategy cacheStrategy = null)
+            : base(cacheStrategy)
         {
             ServiceUri = serviceUri;
             ServiceManagement = ServiceConfigurationFactory.CreateManagement<TService>(serviceUri);
@@ -297,6 +330,8 @@ namespace Microsoft.Pfe.Xrm
         /// </summary>
         /// <param name="serviceManagement">The established service configuration management object</param>
         /// <param name="credentials">The auth credentials</param>
+        /// <param name="cacheStrategy"/>
+        /// <see cref="ICacheStrategy"/>
         /// <remarks>
         ///     <see cref="AuthenticationCredentials" /> can represent AD, Claims, or Cross-realm Claims
         ///     <see cref="ClientCredentials" />
@@ -305,7 +340,8 @@ namespace Microsoft.Pfe.Xrm
         ///     <see cref="SecurityTokenResponse" /> from the federated realm
         /// </remarks>
         protected XrmServiceManager(IServiceManagement<TService> serviceManagement,
-            AuthenticationCredentials credentials)
+            AuthenticationCredentials credentials, ICacheStrategy cacheStrategy = null)
+            : base(cacheStrategy)
         {
             ServiceUri = serviceManagement.CurrentServiceEndpoint.Address.Uri;
             ServiceManagement = serviceManagement;
@@ -319,10 +355,12 @@ namespace Microsoft.Pfe.Xrm
         ///     Manages an established service configuration using DefaultNetworkCredentials
         /// </summary>
         /// <param name="serviceManagement">The established service configuration management object</param>
+        /// <param name="cacheStrategy"/>
+        /// <see cref="ICacheStrategy"/>
         /// <remarks>
         ///     This approach authenticates using default network credentials (AD) since no credentials are supplied
         /// </remarks>
-        protected XrmServiceManager(IServiceManagement<TService> serviceManagement) : this(serviceManagement, null)
+        protected XrmServiceManager(IServiceManagement<TService> serviceManagement, ICacheStrategy cacheStrategy = null) : this(serviceManagement, null, cacheStrategy)
         {
         }
 
@@ -621,5 +659,26 @@ namespace Microsoft.Pfe.Xrm
     /// </summary>
     public abstract class XrmServiceManagerBase
     {
+
+        #region Fields
+
+        internal ServiceManagerCache Cache { get; private set; }
+
+        #endregion
+
+        #region Constructors
+
+        /// <summary>
+        /// Constructor
+        /// </summary>
+        /// <param name="cacheStrategy">The cache strategy to be used, default is CacheStrategies.None</param>
+        /// <see cref="CacheStrategies"/>
+        public XrmServiceManagerBase(ICacheStrategy cacheStrategy)
+        {
+            //if cache strategy is null, assume no caching
+            Cache = new ServiceManagerCache(cacheStrategy ?? CacheStrategies.None);
+        } 
+
+        #endregion
     }
 }

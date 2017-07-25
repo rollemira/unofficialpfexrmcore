@@ -20,6 +20,7 @@ using System.Linq;
 using System.ServiceModel;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Pfe.Xrm.Caching;
 using Microsoft.Xrm.Sdk;
 using Microsoft.Xrm.Sdk.Client;
 using Microsoft.Xrm.Sdk.Discovery;
@@ -375,14 +376,17 @@ namespace Microsoft.Pfe.Xrm
 
         #region Constructor(s)
 
-        public ParallelOrganizationServiceProxy(OrganizationServiceManager serviceManager) : base(serviceManager)
+        public ParallelOrganizationServiceProxy(OrganizationServiceManager serviceManager) : 
+            base(serviceManager)
         {
         }
 
-        public ParallelOrganizationServiceProxy(OrganizationServiceManager serviceManager,
-            int maxDegreeOfParallelism) : base(serviceManager, maxDegreeOfParallelism)
+        public ParallelOrganizationServiceProxy(OrganizationServiceManager serviceManager, int maxDegreeOfParallelism) : 
+            base(serviceManager, maxDegreeOfParallelism)
         {
         }
+
+
 
         #endregion
 
@@ -763,7 +767,7 @@ namespace Microsoft.Pfe.Xrm
         ///     <see cref="IOrganizationService" />.Retrieve() requests concurrently
         /// </summary>
         /// <param name="requests">The <see cref="RetrieveRequest" /> collection defining the entities to be retrieved</param>
-        /// <param name="absoluteExpiration">The cache absolute expiration</param>
+        /// <param name="absoluteExpirationUtc">The cache absolute expiration (Should always be in UTC)</param>
         /// <param name="errorHandler">
         ///     An optional error handling operation. Handler will be passed the request that failed along
         ///     with the corresponding <see cref="FaultException{OrganizationServiceFault}" />
@@ -777,10 +781,10 @@ namespace Microsoft.Pfe.Xrm
         ///     callers should catch <see cref="AggregateException" /> to handle exceptions raised
         ///     by individual requests
         /// </exception>
-        public IEnumerable<Entity> Retrieve(IEnumerable<RetrieveRequest> requests, DateTime absoluteExpiration,
+        public IEnumerable<Entity> Retrieve(IEnumerable<RetrieveRequest> requests, DateTime absoluteExpirationUtc,
             Action<RetrieveRequest, FaultException<OrganizationServiceFault>> errorHandler = null)
         {
-            return Retrieve(requests, new OrganizationServiceProxyOptions(), null, absoluteExpiration, errorHandler);
+            return Retrieve(requests, new OrganizationServiceProxyOptions(), null, absoluteExpirationUtc, errorHandler);
         }
 
         /// <summary>
@@ -806,7 +810,7 @@ namespace Microsoft.Pfe.Xrm
             OrganizationServiceProxyOptions options,
             Action<RetrieveRequest, FaultException<OrganizationServiceFault>> errorHandler = null)
         {
-            return Retrieve(requests, options, errorHandler);
+            return Retrieve(requests, options, null, null, errorHandler);
         }
 
         /// <summary>
@@ -842,7 +846,7 @@ namespace Microsoft.Pfe.Xrm
         /// </summary>
         /// <param name="requests">The <see cref="RetrieveRequest" /> collection defining the entities to be retrieved</param>
         /// <param name="options">The configurable options for the parallel <see cref="OrganizationServiceProxy" /> requests</param>
-        /// <param name="absoluteExpiration">The cache absolute expiration</param>
+        /// <param name="absoluteExpirationUtc">The cache absolute expiration (Should always be in UTC)</param>
         /// <param name="errorHandler">
         ///     An optional error handling operation. Handler will be passed the request that failed along
         ///     with the corresponding <see cref="FaultException{OrganizationServiceFault}" />
@@ -857,10 +861,10 @@ namespace Microsoft.Pfe.Xrm
         ///     by individual requests
         /// </exception>
         public IEnumerable<Entity> Retrieve(IEnumerable<RetrieveRequest> requests,
-            OrganizationServiceProxyOptions options, DateTime absoluteExpiration,
+            OrganizationServiceProxyOptions options, DateTime absoluteExpirationUtc,
             Action<RetrieveRequest, FaultException<OrganizationServiceFault>> errorHandler = null)
         {
-            return Retrieve(requests, options, null, absoluteExpiration, errorHandler);
+            return Retrieve(requests, options, null, absoluteExpirationUtc, errorHandler);
         }
 
         /// <summary>
@@ -870,7 +874,7 @@ namespace Microsoft.Pfe.Xrm
         /// <param name="requests">The <see cref="RetrieveRequest" /> collection defining the entities to be retrieved</param>
         /// <param name="options">The configurable options for the parallel <see cref="OrganizationServiceProxy" /> requests</param>
         /// <param name="slidingExpiration">The sliding cache expiration</param>
-        /// <param name="absoluteExpiration">The absolute cache expiration</param>
+        /// <param name="absoluteExpirationUtc">The absolute cache expiration</param>
         /// <param name="errorHandler">
         ///     An optional error handling operation. Handler will be passed the request that failed along
         ///     with the corresponding <see cref="FaultException{OrganizationServiceFault}" />
@@ -886,7 +890,7 @@ namespace Microsoft.Pfe.Xrm
         /// </exception>
         private IEnumerable<Entity> Retrieve(IEnumerable<RetrieveRequest> requests,
             OrganizationServiceProxyOptions options, TimeSpan? slidingExpiration = null,
-            DateTime? absoluteExpiration = null,
+            DateTime? absoluteExpirationUtc = null,
             Action<RetrieveRequest, FaultException<OrganizationServiceFault>> errorHandler = null)
         {
             return ExecuteOperationWithResponse<RetrieveRequest, Entity>(requests, options, (request, context) =>
@@ -894,20 +898,20 @@ namespace Microsoft.Pfe.Xrm
                 Entity entity;
                 var cacheKey = GetEntityCacheKey(request.Target.LogicalName, request.Target.Id, request.ColumnSet);
                 //avoid thread collision
-                lock (_lock)
+                lock (syncRoot)
                 {
                     //can we get it from cache?
-                    if (CacheHelper.Exists(cacheKey))
+                    if (ServiceManager.Cache.Exists(cacheKey))
                     {
                         //yes
-                        entity = CacheHelper.Get<Entity>(cacheKey);
+                        entity = ServiceManager.Cache.Get<Entity>(cacheKey);
                     }
                     else
                     {
                         //no, retrieve and add it to cache
                         entity = context.Local.Retrieve(request.Target.LogicalName, request.Target.Id,
                             request.ColumnSet);
-                        CacheHelper.Add(entity, cacheKey, slidingExpiration, absoluteExpiration);
+                        ServiceManager.Cache.Add(entity, cacheKey, slidingExpiration, absoluteExpirationUtc);
                     }
                 }
 
@@ -916,10 +920,13 @@ namespace Microsoft.Pfe.Xrm
             }, errorHandler);
         }
 
-#pragma warning disable 649
-        private static object _lock;
-#pragma warning restore 649
-
+        /// <summary>
+        /// Gets a cache key for an entity
+        /// </summary>
+        /// <param name="logicalName">Entity logical name</param>
+        /// <param name="id">Entity ID</param>
+        /// <param name="columnSet">The columnset returned</param>
+        /// <returns></returns>
         private string GetEntityCacheKey(string logicalName, Guid id, ColumnSet columnSet)
         {
             var colString = JsonConvert.SerializeObject(columnSet);
@@ -992,7 +999,7 @@ namespace Microsoft.Pfe.Xrm
         ///     <see cref="IOrganizationService" />.RetrieveMultiple() requests concurrently
         /// </summary>
         /// <param name="queries">The keyed collection of queries (<see cref="QueryExpresion" /> or <see cref="FetchExpression" />)</param>
-        /// <param name="absoluteExpiration">The absolute cache expiration</param>
+        /// <param name="absoluteExpirationUtc">The absolute cache expiration</param>
         /// <param name="errorHandler">
         ///     An optional error handling operation. Handler will be passed the request that failed along
         ///     with the corresponding <see cref="FaultException{OrganizationServiceFault}" />
@@ -1010,10 +1017,10 @@ namespace Microsoft.Pfe.Xrm
         ///     by individual requests
         /// </exception>
         public IDictionary<string, EntityCollection> RetrieveMultiple(IDictionary<string, QueryBase> queries,
-            DateTime absoluteExpiration,
+            DateTime absoluteExpirationUtc,
             Action<KeyValuePair<string, QueryBase>, FaultException<OrganizationServiceFault>> errorHandler = null)
         {
-            return RetrieveMultiple(queries, false, new OrganizationServiceProxyOptions(), null, absoluteExpiration,
+            return RetrieveMultiple(queries, false, new OrganizationServiceProxyOptions(), null, absoluteExpirationUtc,
                 errorHandler);
         }
 
@@ -1080,7 +1087,7 @@ namespace Microsoft.Pfe.Xrm
         /// </summary>
         /// <param name="queries">The keyed collection of queries (<see cref="QueryExpresion" /> or <see cref="FetchExpression" />)</param>
         /// <param name="options">The configurable options for the parallel <see cref="OrganizationServiceProxy" /> requests</param>
-        /// <param name="absoluteExpiration">The absolute cache expiration</param>
+        /// <param name="absoluteExpirationUtc">The absolute cache expiration</param>
         /// <param name="errorHandler">
         ///     An optional error handling operation. Handler will be passed the request that failed along
         ///     with the corresponding <see cref="FaultException{OrganizationServiceFault}" />
@@ -1097,10 +1104,10 @@ namespace Microsoft.Pfe.Xrm
         ///     by individual requests
         /// </exception>
         public IDictionary<string, EntityCollection> RetrieveMultiple(IDictionary<string, QueryBase> queries,
-            OrganizationServiceProxyOptions options, DateTime absoluteExpiration,
+            OrganizationServiceProxyOptions options, DateTime absoluteExpirationUtc,
             Action<KeyValuePair<string, QueryBase>, FaultException<OrganizationServiceFault>> errorHandler = null)
         {
-            return RetrieveMultiple(queries, false, options, null, absoluteExpiration, errorHandler);
+            return RetrieveMultiple(queries, false, options, null, absoluteExpirationUtc, errorHandler);
         }
 
         /// <summary>
@@ -1177,7 +1184,7 @@ namespace Microsoft.Pfe.Xrm
         ///     True = iterative requests will be performed to retrieve all pages, otherwise only
         ///     the first results page will be returned for each query
         /// </param>
-        /// <param name="absoluteExpiration">The absolute cache expiration</param>
+        /// <param name="absoluteExpirationUtc">The absolute cache expiration</param>
         /// <param name="errorHandler">
         ///     An optional error handling operation. Handler will be passed the request that failed along
         ///     with the corresponding <see cref="FaultException{OrganizationServiceFault}" />
@@ -1194,11 +1201,11 @@ namespace Microsoft.Pfe.Xrm
         ///     by individual requests
         /// </exception>
         public IDictionary<string, EntityCollection> RetrieveMultiple(IDictionary<string, QueryBase> queries,
-            bool shouldRetrieveAllPages, DateTime absoluteExpiration,
+            bool shouldRetrieveAllPages, DateTime absoluteExpirationUtc,
             Action<KeyValuePair<string, QueryBase>, FaultException<OrganizationServiceFault>> errorHandler = null)
         {
             return RetrieveMultiple(queries, shouldRetrieveAllPages, new OrganizationServiceProxyOptions(), null,
-                absoluteExpiration, errorHandler);
+                absoluteExpirationUtc, errorHandler);
         }
 
         /// <summary>
@@ -1229,7 +1236,7 @@ namespace Microsoft.Pfe.Xrm
             bool shouldRetrieveAllPages, OrganizationServiceProxyOptions options,
             Action<KeyValuePair<string, QueryBase>, FaultException<OrganizationServiceFault>> errorHandler = null)
         {
-            return RetrieveMultiple(queries, shouldRetrieveAllPages, options, errorHandler);
+            return RetrieveMultiple(queries, shouldRetrieveAllPages, options, null, null, errorHandler);
         }
 
         /// <summary>
@@ -1274,7 +1281,7 @@ namespace Microsoft.Pfe.Xrm
         ///     the first results page will be returned for each query
         /// </param>
         /// <param name="options">The configurable options for the parallel <see cref="OrganizationServiceProxy" /> requests</param>
-        /// <param name="absoluteExpiration">The absolute cache expiration</param>
+        /// <param name="absoluteExpirationUtc">The absolute cache expiration</param>
         /// <param name="errorHandler">
         ///     An optional error handling operation. Handler will be passed the request that failed along
         ///     with the corresponding <see cref="FaultException{OrganizationServiceFault}" />
@@ -1290,10 +1297,10 @@ namespace Microsoft.Pfe.Xrm
         ///     by individual requests
         /// </exception>
         public IDictionary<string, EntityCollection> RetrieveMultiple(IDictionary<string, QueryBase> queries,
-            bool shouldRetrieveAllPages, OrganizationServiceProxyOptions options, DateTime absoluteExpiration,
+            bool shouldRetrieveAllPages, OrganizationServiceProxyOptions options, DateTime absoluteExpirationUtc,
             Action<KeyValuePair<string, QueryBase>, FaultException<OrganizationServiceFault>> errorHandler = null)
         {
-            return RetrieveMultiple(queries, shouldRetrieveAllPages, options, null, absoluteExpiration, errorHandler);
+            return RetrieveMultiple(queries, shouldRetrieveAllPages, options, null, absoluteExpirationUtc, errorHandler);
         }
 
         /// <summary>
@@ -1307,7 +1314,7 @@ namespace Microsoft.Pfe.Xrm
         /// </param>
         /// <param name="options">The configurable options for the parallel <see cref="OrganizationServiceProxy" /> requests</param>
         /// <param name="slidingExpiration">The sliding cache expiration</param>
-        /// <param name="absoluteExpiration">The absolute cache expiration</param>
+        /// <param name="absoluteExpirationUtc">The absolute cache expiration</param>
         /// <param name="errorHandler">
         ///     An optional error handling operation. Handler will be passed the request that failed along
         ///     with the corresponding <see cref="FaultException{OrganizationServiceFault}" />
@@ -1324,13 +1331,13 @@ namespace Microsoft.Pfe.Xrm
         /// </exception>
         private IDictionary<string, EntityCollection> RetrieveMultiple(IDictionary<string, QueryBase> queries,
             bool shouldRetrieveAllPages, OrganizationServiceProxyOptions options, TimeSpan? slidingExpiration = null,
-            DateTime? absoluteExpiration = null,
+            DateTime? absoluteExpirationUtc = null,
             Action<KeyValuePair<string, QueryBase>, FaultException<OrganizationServiceFault>> errorHandler = null)
         {
             return ExecuteOperationWithResponse<KeyValuePair<string, QueryBase>, KeyValuePair<string, EntityCollection>
             >(queries, options, (query, context) =>
             {
-                var result = context.Local.RetrieveMultiple(query.Value, shouldRetrieveAllPages);
+                var result = context.Local.RetrieveMultiple(query.Value, shouldRetrieveAllPages, slidingExpiration, absoluteExpirationUtc);
 
                 context.Results.Add(new KeyValuePair<string, EntityCollection>(query.Key, result));
             }, errorHandler).ToDictionary(r => r.Key, r => r.Value);
@@ -1654,7 +1661,7 @@ namespace Microsoft.Pfe.Xrm
             Func<ManagedTokenOrganizationServiceProxy> proxyInit = () =>
             {
                 var proxy = ServiceManager.GetProxy();
-                proxy.SetProxyOptions(options);
+                proxy.SetProxyOptions(options, ServiceManager.Cache);
 
                 return proxy;
             };
@@ -1746,7 +1753,8 @@ namespace Microsoft.Pfe.Xrm
             throw new NotImplementedException();
         }
 
-        protected ParallelServiceProxy(T serviceManager) : this(serviceManager, MaxDegreeOfParallelismDefault)
+        protected ParallelServiceProxy(T serviceManager) : 
+            this(serviceManager, MaxDegreeOfParallelismDefault)
         {
         }
 
@@ -1761,7 +1769,6 @@ namespace Microsoft.Pfe.Xrm
         #region Properties
 
         protected T ServiceManager { get; set; }
-
 
         /// <summary>
         ///     Override the default max degree of concurrency for the ParallelServiceProxy operations

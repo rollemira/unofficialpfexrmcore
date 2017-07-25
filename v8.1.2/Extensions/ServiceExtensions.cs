@@ -14,6 +14,7 @@
  =================================================================================================================================*/
 
 using System;
+using Microsoft.Pfe.Xrm.Caching;
 using Microsoft.Xrm.Sdk;
 using Microsoft.Xrm.Sdk.Client;
 using Microsoft.Xrm.Sdk.Query;
@@ -37,8 +38,10 @@ namespace Microsoft.Pfe.Xrm
 
     public static class OrganizationServiceExtensions
     {
+        private static ServiceManagerCache Cache => _cache ?? (_cache = new ServiceManagerCache(CacheStrategies.None));
 #pragma warning disable 649
-        private static object _lock;
+        private static object _syncRoot;
+        private static ServiceManagerCache _cache;
 #pragma warning restore 649
 
         /// <summary>
@@ -49,12 +52,26 @@ namespace Microsoft.Pfe.Xrm
         /// <param name="options">The options to configure on the service proxy</param>
         public static void SetProxyOptions(this OrganizationServiceProxy proxy, OrganizationServiceProxyOptions options)
         {
+            SetProxyOptions(proxy, options, null);
+        }
+
+        /// <summary>
+        ///     Helper method for assigning common proxy-specific settings for impersonation, early-bound types, and channel
+        ///     timeout
+        /// </summary>
+        /// <param name="proxy">The service proxy</param>
+        /// <param name="options">The options to configure on the service proxy</param>
+        /// <param name="cache">The cache to be used (if any)</param>
+        internal static void SetProxyOptions(this OrganizationServiceProxy proxy, OrganizationServiceProxyOptions options, ServiceManagerCache cache = null)
+        {
             if (!options.CallerId.Equals(Guid.Empty)) proxy.CallerId = options.CallerId;
 
             if (options.ShouldEnableProxyTypes) proxy.EnableProxyTypes();
 
             if (!options.Timeout.Equals(TimeSpan.Zero) && options.Timeout > TimeSpan.Zero)
                 proxy.Timeout = options.Timeout;
+
+            _cache = cache;
         }
 
         /// <summary>
@@ -111,7 +128,7 @@ namespace Microsoft.Pfe.Xrm
         /// <param name="service">The current IOrganizationService instance</param>
         /// <param name="query">The query to be executed</param>
         /// <param name="shouldRetrieveAllPages">True = perform iterative paged query requests, otherwise return first page only</param>
-        /// <param name="absoluteExpiration">The absolute cache expiration</param>
+        /// <param name="absoluteExpirationUtc">The cache absolute expiration (Should always be in UTC)</param>
         /// <param name="pagedOperation">An operation to perform on each page of results as it's retrieved</param>
         /// <returns>
         ///     An EntityCollection containing the results of the query. Details reflect the last page retrieved (e.g.
@@ -124,10 +141,36 @@ namespace Microsoft.Pfe.Xrm
         ///     If retrieving all pages, max result count is essentially unbound - Int64.MaxValue: 9,223,372,036,854,775,807
         /// </remarks>
         public static EntityCollection RetrieveMultiple(this IOrganizationService service, QueryBase query,
-            bool shouldRetrieveAllPages, DateTime absoluteExpiration, Action<EntityCollection> pagedOperation = null)
+            bool shouldRetrieveAllPages, DateTime absoluteExpirationUtc, Action<EntityCollection> pagedOperation = null)
         {
             return service.RetrieveMultiple(query, shouldRetrieveAllPages, long.MaxValue, pagedOperation, null,
-                absoluteExpiration);
+                absoluteExpirationUtc);
+        }
+
+        /// <summary>
+        ///     Performs an iterative series of RetrieveMultiple requests in order to obtain all pages of results
+        /// </summary>
+        /// <param name="service">The current IOrganizationService instance</param>
+        /// <param name="query">The query to be executed</param>
+        /// <param name="shouldRetrieveAllPages">True = perform iterative paged query requests, otherwise return first page only</param>
+        /// <param name="slidingExpiration">The sliding cache expiration</param>
+        /// <param name="absoluteExpirationUtc">The cache absolute expiration (Should always be in UTC)</param>
+        /// <param name="pagedOperation">An operation to perform on each page of results as it's retrieved</param>
+        /// <returns>
+        ///     An EntityCollection containing the results of the query. Details reflect the last page retrieved (e.g.
+        ///     MoreRecords, PagingCookie, etc.)
+        /// </returns>
+        /// <remarks>
+        ///     CRM limits query response to paged result sets of 5,000. This method encapsulates the logic for performing
+        ///     subsequent
+        ///     query requests so that all results can be retrieved.
+        ///     If retrieving all pages, max result count is essentially unbound - Int64.MaxValue: 9,223,372,036,854,775,807
+        /// </remarks>
+        internal static EntityCollection RetrieveMultiple(this IOrganizationService service, QueryBase query,
+            bool shouldRetrieveAllPages, TimeSpan? slidingExpiration, DateTime? absoluteExpirationUtc, Action<EntityCollection> pagedOperation = null)
+        {
+            return service.RetrieveMultiple(query, shouldRetrieveAllPages, long.MaxValue, pagedOperation, slidingExpiration,
+                absoluteExpirationUtc);
         }
 
         /// <summary>
@@ -169,7 +212,7 @@ namespace Microsoft.Pfe.Xrm
         ///     An upper limit on the maximum number of entity records that should be retrieved as the
         ///     query results - useful when the total size of result set is unknown and size may cause OutOfMemoryException
         /// </param>
-        /// <param name="absoluteExpiration">The absolute cache expiration</param>
+        /// <param name="absoluteExpirationUtc">The cache absolute expiration (Should always be in UTC)</param>
         /// <param name="pagedOperation">An operation to perform on each page of results as it's retrieved</param>
         /// <returns>
         ///     An EntityCollection containing the results of the query. Details reflect the last page retrieved (e.g.
@@ -183,9 +226,9 @@ namespace Microsoft.Pfe.Xrm
         ///     then page size is adjusted down to honor the max result count
         /// </remarks>
         public static EntityCollection RetrieveMultiple(this IOrganizationService service, QueryBase query,
-            int maxResultCount, DateTime absoluteExpiration, Action<EntityCollection> pagedOperation = null)
+            int maxResultCount, DateTime absoluteExpirationUtc, Action<EntityCollection> pagedOperation = null)
         {
-            return service.RetrieveMultiple(query, true, maxResultCount, pagedOperation, null, absoluteExpiration);
+            return service.RetrieveMultiple(query, true, maxResultCount, pagedOperation, null, absoluteExpirationUtc);
         }
 
         /// <summary>
@@ -229,7 +272,7 @@ namespace Microsoft.Pfe.Xrm
         /// </param>
         /// <param name="pagedOperation">An operation to perform on each page of results as it's retrieved</param>
         /// <param name="slidingExpiration">The sliding cache expiration</param>
-        /// <param name="absoluteExpiration">The absolute cache expiration</param>
+        /// <param name="absoluteExpirationUtc">The cache absolute expiration (Should always be in UTC)</param>
         /// <returns>
         ///     An EntityCollection containing the results of the query. Details reflect the last page retrieved (e.g.
         ///     MoreRecords, PagingCookie, etc.)
@@ -241,7 +284,7 @@ namespace Microsoft.Pfe.Xrm
         /// </remarks>
         private static EntityCollection RetrieveMultiple(this IOrganizationService service, QueryBase query,
             bool shouldRetrieveAllPages, long maxResultCount, Action<EntityCollection> pagedOperation,
-            TimeSpan? slidingExpiration = null, DateTime? absoluteExpiration = null)
+            TimeSpan? slidingExpiration = null, DateTime? absoluteExpirationUtc = null)
         {
             if (query == null)
                 throw new ArgumentNullException("query", "Must supply a query for the RetrieveMultiple request");
@@ -253,12 +296,12 @@ namespace Microsoft.Pfe.Xrm
 
             if (qe != null)
                 return RetrieveMultiple(service, qe, shouldRetrieveAllPages, maxResultCount, pagedOperation,
-                    slidingExpiration, absoluteExpiration);
+                    slidingExpiration, absoluteExpirationUtc);
 
             var fe = query as FetchExpression;
             if (fe != null)
                 return RetrieveMultiple(service, fe, shouldRetrieveAllPages, maxResultCount, pagedOperation,
-                    slidingExpiration, absoluteExpiration);
+                    slidingExpiration, absoluteExpirationUtc);
 
             throw new ArgumentException("This method only handles FetchExpression and QueryExpression types.", "query");
         }
@@ -276,7 +319,7 @@ namespace Microsoft.Pfe.Xrm
         /// </param>
         /// <param name="pagedOperation">An operation to perform on each page of results as it's retrieved</param>
         /// <param name="slidingExpiration">The sliding cache expiration</param>
-        /// <param name="absoluteExpiration">The absolute cache expiration</param>
+        /// <param name="absoluteExpirationUtc">The cache absolute expiration (Should always be in UTC)</param>
         /// <returns>
         ///     An EntityCollection containing the results of the query. Details reflect the last page retrieved (e.g.
         ///     MoreRecords, PagingCookie, etc.)
@@ -288,7 +331,7 @@ namespace Microsoft.Pfe.Xrm
         /// </remarks>
         private static EntityCollection RetrieveMultiple(this IOrganizationService service, QueryExpression query,
             bool shouldRetrieveAllPages, long maxResultCount, Action<EntityCollection> pagedOperation,
-            TimeSpan? slidingExpiration = null, DateTime? absoluteExpiration = null)
+            TimeSpan? slidingExpiration = null, DateTime? absoluteExpirationUtc = null)
         {
             // Establish page info (only if TopCount not specified)
             if (query.TopCount == null)
@@ -325,19 +368,19 @@ namespace Microsoft.Pfe.Xrm
                 //generate cache key
                 var cacheKey = JsonConvert.SerializeObject(query);
                 //avoid thread collision
-                lock (_lock)
+                lock (_syncRoot)
                 {
                     //can we get it from cache?
-                    if (CacheHelper.Exists(cacheKey))
+                    if (Cache.Exists(cacheKey))
                     {
                         //yes
-                        page = CacheHelper.Get<EntityCollection>(cacheKey);
+                        page = Cache.Get<EntityCollection>(cacheKey);
                     }
                     else
                     {
                         //no, retrieve and add it to cache
                         page = service.RetrieveMultiple(query);
-                        CacheHelper.Add(page, cacheKey, slidingExpiration, absoluteExpiration);
+                        Cache.Add(page, cacheKey, slidingExpiration, absoluteExpirationUtc);
                     }
                 }
 
@@ -387,7 +430,7 @@ namespace Microsoft.Pfe.Xrm
         /// </param>
         /// <param name="pagedOperation">An operation to perform on each page of results as it's retrieved</param>
         /// <param name="slidingExpiration">The sliding cache expiration</param>
-        /// <param name="absoluteExpiration">The absolute cache expiration</param>
+        /// <param name="absoluteExpirationUtc">The cache absolute expiration (Should always be in UTC)</param>
         /// <returns>
         ///     An EntityCollection containing the results of the query. Details reflect the last page retrieved (e.g.
         ///     MoreRecords, PagingCookie, etc.)
@@ -399,7 +442,7 @@ namespace Microsoft.Pfe.Xrm
         /// </remarks>
         private static EntityCollection RetrieveMultiple(this IOrganizationService service, FetchExpression fetch,
             bool shouldRetrieveAllPages, long maxResultCount, Action<EntityCollection> pagedOperation,
-            TimeSpan? slidingExpiration = null, DateTime? absoluteExpiration = null)
+            TimeSpan? slidingExpiration = null, DateTime? absoluteExpirationUtc = null)
         {
             var fetchXml = fetch.ToXml();
             var pageNumber = fetchXml.GetFetchXmlPageNumber();
@@ -424,19 +467,19 @@ namespace Microsoft.Pfe.Xrm
                 //generate cache key
                 var cacheKey = JsonConvert.SerializeObject(fetchXml.ToString());
                 //avoid thread collision
-                lock (_lock)
+                lock (_syncRoot)
                 {
                     //can we get it from cache?
-                    if (CacheHelper.Exists(cacheKey))
+                    if (Cache.Exists(cacheKey))
                     {
                         //yes
-                        page = CacheHelper.Get<EntityCollection>(cacheKey);
+                        page = Cache.Get<EntityCollection>(cacheKey);
                     }
                     else
                     {
                         //no, retrieve and add it to cache
                         page = service.RetrieveMultiple(fetch);
-                        CacheHelper.Add(page, cacheKey, slidingExpiration, absoluteExpiration);
+                        Cache.Add(page, cacheKey, slidingExpiration, absoluteExpirationUtc);
                     }
                 }
 
