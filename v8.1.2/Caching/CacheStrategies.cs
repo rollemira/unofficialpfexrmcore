@@ -1,4 +1,4 @@
-﻿namespace Microsoft.Pfe.Xrm.Caching
+﻿namespace Microsoft.Pfe.Xrm
 {
     /// <summary>
     /// The different cache strategies to choose from

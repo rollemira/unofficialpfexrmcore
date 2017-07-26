@@ -13,7 +13,7 @@
 
  =================================================================================================================================*/
 
-using Microsoft.Pfe.Xrm.Caching;
+using System.Linq;
 
 namespace Microsoft.Pfe.Xrm
 {
@@ -42,14 +42,13 @@ namespace Microsoft.Pfe.Xrm
         /// </summary>
         /// <param name="serviceUri">The service endpoint location</param>
         /// <param name="credentials">The auth credentials</param>
-        /// <param name="cacheStrategy">The strategy for caching data <see cref="CacheStrategies"/></param>     
         /// <remarks>
         /// <see cref="AuthenticationCredentials"/> can represent AD, Claims, or Cross-realm Claims <see cref="ClientCredentials"/>
         /// The authCredentials may already contain a <see cref="SecurityTokenResponse"/>
         /// For cross-realm (federated) scenarios it can contain a HomeRealm Uri by itself, or also include a <see cref="SecurityTokenResponse"/> from the federated realm
         /// </remarks>
-        public DiscoveryServiceManager(Uri serviceUri, AuthenticationCredentials credentials, ICacheStrategy cacheStrategy = null)
-            : base(serviceUri, credentials, cacheStrategy) { }
+        public DiscoveryServiceManager(Uri serviceUri, AuthenticationCredentials credentials)
+            : base(serviceUri, credentials) { }
 
         /// <summary>
         /// Establishes an <see cref="IDiscoveryService"/> configuration at Uri location using supplied identity details
@@ -57,9 +56,8 @@ namespace Microsoft.Pfe.Xrm
         /// <param name="serviceUri">The service endpoint location</param>
         /// <param name="username">The username of the identity to authenticate</param>
         /// <param name="password">The password of the identity to authenticate</param>
-        /// <param name="cacheStrategy">The strategy for caching data <see cref="CacheStrategies"/></param>
-        public DiscoveryServiceManager(Uri serviceUri, string username, string password, ICacheStrategy cacheStrategy = null)
-            : base(serviceUri, username, password, cacheStrategy) { }
+        public DiscoveryServiceManager(Uri serviceUri, string username, string password)
+            : base(serviceUri, username, password, null) { }
 
         /// <summary>
         /// Establishes an <see cref="IDiscoveryService"/> configuration at Uri location using supplied identity details
@@ -69,36 +67,31 @@ namespace Microsoft.Pfe.Xrm
         /// <param name="password">The password of the identity to authenticate</param>
         /// <param name="domain">Optional parameter for specifying the domain (when known)</param>
         /// <param name="homeRealm">Optional parameter for specifying the federated home realm location (when known)</param>
-        /// <param name="cacheStrategy">The strategy for caching data <see cref="CacheStrategies"/></param>
-        public DiscoveryServiceManager(Uri serviceUri, string username, string password, string domain, Uri homeRealm = null,
-            ICacheStrategy cacheStrategy = null)
-            : base(serviceUri, username, password, domain, homeRealm, cacheStrategy) { }
+        public DiscoveryServiceManager(Uri serviceUri, string username, string password, string domain, Uri homeRealm = null)
+            : base(serviceUri, username, password, domain, homeRealm) { }
 
         /// <summary>
         /// Manages an established <see cref="IDiscoveryService"/> configuration using supplied <see cref="AuthenticationCredentials"/>
         /// </summary>
         /// <param name="serviceManagement">The established service configuration management object</param>
         /// <param name="credentials">The auth credentials</param>
-        /// <param name="cacheStrategy">The strategy for caching data <see cref="CacheStrategies"/></param>
         /// <remarks>
         /// <see cref="AuthenticationCredentials"/> can represent AD, Claims, or Cross-realm Claims <see cref="ClientCredentials"/>
         /// The authCredentials may already contain a <see cref="SecurityTokenResponse"/>
         /// For cross-realm (federated) scenarios it can contain a HomeRealm Uri by itself, or also include a <see cref="SecurityTokenResponse"/> from the federated realm
         /// </remarks>
-        public DiscoveryServiceManager(IServiceManagement<IDiscoveryService> serviceManagement, AuthenticationCredentials credentials,
-            ICacheStrategy cacheStrategy = null)
-            : base(serviceManagement, credentials, cacheStrategy) { }
+        public DiscoveryServiceManager(IServiceManagement<IDiscoveryService> serviceManagement, AuthenticationCredentials credentials)
+            : base(serviceManagement, credentials) { }
 
         /// <summary>
         /// Manages an established <see cref="IDiscoveryService"/> configuration using DefaultNetworkCredentials
         /// </summary>
         /// <param name="serviceManagement">The established service configuration management object</param>  
-        /// <param name="cacheStrategy">The strategy for caching data <see cref="CacheStrategies"/></param>
         /// <remarks>
         /// This approach authenticates using DefaultNetworkCredentials (AD) since no credentials are supplied
         /// </remarks>
-        public DiscoveryServiceManager(IServiceManagement<IDiscoveryService> serviceManagement, ICacheStrategy cacheStrategy = null)
-            : base(serviceManagement, cacheStrategy) { }
+        public DiscoveryServiceManager(IServiceManagement<IDiscoveryService> serviceManagement)
+            : base(serviceManagement) { }
 
         #endregion
 
@@ -543,14 +536,31 @@ namespace Microsoft.Pfe.Xrm
         /// Prepare and authenticate client credentials from a federated realm
         /// </summary>
         /// <param name="clientCredentials">The client credentials</param>
-        /// <param name="HomeRealmUri">The federated home realm location</param>
-        private void AuthenticateFederatedRealmCredentials(ClientCredentials clientCredentials, Uri HomeRealmUri)
+        /// <param name="homeRealmUri">The federated home realm location</param>
+        private void AuthenticateFederatedRealmCredentials(ClientCredentials clientCredentials, Uri homeRealmUri)
         {
+            var realmEndpoints = this.ServiceManagement.CrossRealmIssuerEndpoints;
+            //when no realm, see if we can dig it up for them
+            if (homeRealmUri == null && realmEndpoints != null && realmEndpoints.Count >0)
+            {
+                homeRealmUri = realmEndpoints.First().Key;
+            }
+
             this.Credentials = new AuthenticationCredentials()
             {
                 ClientCredentials = clientCredentials,
-                HomeRealm = HomeRealmUri
+                UserPrincipalName = clientCredentials.UserName.UserName,
+                HomeRealm = homeRealmUri
             };
+
+            var provider = this.ServiceManagement.GetIdentityProvider(clientCredentials.UserName.UserName);
+            if (provider != null && provider.IdentityProviderType == IdentityProviderType.LiveId)
+            {
+                this.Credentials.SupportingCredentials = new AuthenticationCredentials()
+                {
+                    ClientCredentials = DeviceIdManager.LoadOrRegisterDevice()
+                };
+            }
 
             RequestSecurityToken();
         }

@@ -17,8 +17,9 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Net;
 using System.ServiceModel;
+using System.ServiceModel.Description;
 using System.Text;
-
+using Microsoft.Crm.Services.Utility;
 using Microsoft.Xrm.Sdk;
 using Microsoft.Xrm.Sdk.Client;
 using Microsoft.Xrm.Sdk.Query;
@@ -342,21 +343,40 @@ namespace Microsoft.Pfe.Xrm.Samples
             {
                 using (var pw = SamplesConfig.GetCrmDecryptedPassword())
                 {
-                    this.Credentials = this.ServiceManagement.Authenticate(
-                        new AuthenticationCredentials()
+                    var onlineFederation = this.ServiceManagement.AuthenticationType == AuthenticationProviderType.OnlineFederation;
+                    var homeRealm = (onlineFederation)
+                        ? this.ServiceManagement.CrossRealmIssuerEndpoints.First().Key
+                        : null;
+                    var login = new AuthenticationCredentials()
+                    {
+                        HomeRealm = homeRealm,
+                        ClientCredentials = new ClientCredentials()
                         {
-                            ClientCredentials =
+                            UserName =
                             {
-                                UserName =
-                                {
-                                    UserName = SamplesConfig.CrmUsername,
-                                    Password = pw.ToUnsecureString()
-                                }
-                            },
-                            UserPrincipalName = this.ServiceManagement.AuthenticationType == AuthenticationProviderType.OnlineFederation
+                                UserName = SamplesConfig.CrmUsername,
+                                Password = pw.ToUnsecureString()
+                            }
+                        },
+                        UserPrincipalName =
+                           (onlineFederation)
                                 ? SamplesConfig.CrmUsername
                                 : null
-                        });
+                    };
+
+                    if (onlineFederation)
+                    {
+                        var provider = this.ServiceManagement.GetIdentityProvider(login.UserPrincipalName);
+                        if (provider != null && provider.IdentityProviderType == IdentityProviderType.LiveId)
+                        {
+                            login.SupportingCredentials = new AuthenticationCredentials()
+                            {
+                                ClientCredentials = DeviceIdManager.LoadOrRegisterDevice()
+                            };
+                        }
+                    }
+
+                    this.Credentials = this.ServiceManagement.Authenticate(login);
                 }
             }
         }

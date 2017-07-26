@@ -24,8 +24,6 @@ namespace Microsoft.Pfe.Xrm
     using System.Threading;
     using System.Threading.Tasks;
 
-    using Microsoft.Pfe.Xrm.Caching;
-
     using Microsoft.Xrm.Sdk;
     using Microsoft.Xrm.Sdk.Client;
     using Microsoft.Xrm.Sdk.Discovery;
@@ -675,9 +673,9 @@ namespace Microsoft.Pfe.Xrm
                 (request, context) =>
                 {
                     var cacheKey = string.Format("Entity[{0}]ID[{1}]Columns[{2}]", request.Target.LogicalName, request.Target.Id, 
-                        request.ColumnSet.ToJson());
+                        request.ColumnSet.ToJsonString());
                     //avoid thread collision
-                    lock (syncRoot)
+                    lock (ThreadSafety.SyncRoot)
                     {
                         Entity entity;
                         //can we get it from cache?
@@ -1298,8 +1296,6 @@ namespace Microsoft.Pfe.Xrm
     public abstract class ParallelServiceProxy<T> : ParallelServiceProxy
         where T : XrmServiceManagerBase
     {
-        protected static object syncRoot = new Object();            
-
         #region Constructor(s)
 
         private ParallelServiceProxy() { throw new NotImplementedException(); }

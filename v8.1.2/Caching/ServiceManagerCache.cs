@@ -1,6 +1,6 @@
 ﻿using System;
 
-namespace Microsoft.Pfe.Xrm.Caching
+namespace Microsoft.Pfe.Xrm
 {
     /// <summary>
     ///     A wrapper for the chosen cache strategy

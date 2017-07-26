@@ -5,7 +5,7 @@ namespace Microsoft.Pfe.Xrm
 {
     public static class ObjectExtensions
     {
-        public static string ToJson(this object o)
+        public static string ToJsonString(this object o)
         {
             string result;
             using (var jsonStream = new MemoryStream())

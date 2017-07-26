@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Web;
 
-namespace Microsoft.Pfe.Xrm.Caching
+namespace Microsoft.Pfe.Xrm
 {
     /// <summary>
     /// This is a cache strategy that can be used in ASP.NET applications

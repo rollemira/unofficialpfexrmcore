@@ -1,6 +1,6 @@
 ﻿using System;
 
-namespace Microsoft.Pfe.Xrm.Caching
+namespace Microsoft.Pfe.Xrm
 {
     /// <summary>
     /// A cache strategy that represents no caching

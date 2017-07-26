@@ -19,7 +19,7 @@ namespace Microsoft.Pfe.Xrm
     using System.Collections.Generic;
     using System.Linq;
     using System.Text;
-    using Microsoft.Pfe.Xrm.Caching;
+    
     using Microsoft.Xrm.Sdk;
     using Microsoft.Xrm.Sdk.Client;
     using Microsoft.Xrm.Sdk.Query;
@@ -43,10 +43,7 @@ namespace Microsoft.Pfe.Xrm
     public static class OrganizationServiceExtensions
     {
         private static ServiceManagerCache Cache => _cache ?? (_cache = new ServiceManagerCache(CacheStrategies.None));
-#pragma warning disable 649
-        private static object _syncRoot;
         private static ServiceManagerCache _cache;
-#pragma warning restore 649
 
         /// <summary>
         /// Helper method for assigning common proxy-specific settings for impersonation, early-bound types, and channel timeout
@@ -322,11 +319,12 @@ namespace Microsoft.Pfe.Xrm
             while (true)
             {
                 EntityCollection page;
-                //generate cache key
-                var cacheKey = string.Format("QueryExpression[{0}]", query.ToJson());
                 //avoid thread collision
-                lock (_syncRoot)
+                lock (ThreadSafety.SyncRoot)
                 {
+                    //generate cache key
+                    var cacheKey = string.Format("QueryExpression[{0}]", query.ToJsonString());
+
                     //can we get it from cache?
                     if (Cache.Exists(cacheKey))
                     {
@@ -421,11 +419,12 @@ namespace Microsoft.Pfe.Xrm
             while (true)
             {
                 EntityCollection page;
-                //generate cache key
-                var cacheKey = string.Format("FetchXML[{0}]", fetchXml);
                 //avoid thread collision
-                lock (_syncRoot)
+                lock (ThreadSafety.SyncRoot)
                 {
+                    //generate cache key
+                    var cacheKey = string.Format("FetchXML[{0}]", fetchXml);
+
                     //can we get it from cache?
                     if (Cache.Exists(cacheKey))
                     {
