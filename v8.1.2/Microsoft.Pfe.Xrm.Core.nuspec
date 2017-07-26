@@ -1,0 +1,20 @@
+<?xml version="1.0"?>
+<package >
+  <metadata>
+    <id>Rollem.Unofficial.Microsoft.Pfe.Xrm.CoreV8</id>
+    <version>8.1.2</version>
+    <title>Microsoft PFE XRM Core Library</title>
+    <authors>Austin Jones</authors>
+    <owners>Austin Jones</owners>
+    <projectUrl>https://github.com/rollemira/unofficialpfexrmcore/tree/master/v8.1.2</projectUrl>
+    <requireLicenseAcceptance>false</requireLicenseAcceptance>
+    <description>Library for parallelization talking to CRM 2016</description>
+    <releaseNotes>Caching added</releaseNotes>
+    <copyright>Copyright 2017</copyright>
+    <tags>CRM</tags>
+    <dependencies>
+      <dependency  id="Microsoft.CrmSdk.CoreAssemblies" version="8.1.0.2" />
+      <dependency  id="Microsoft.IdentityModel" version="6.1.7600.16394" />
+    </dependencies>
+  </metadata>
+</package>

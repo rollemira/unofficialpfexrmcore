@@ -70,7 +70,7 @@ namespace Microsoft.Pfe.Xrm
         /// <param name="domain">Optional parameter for specifying the domain (when known)</param>
         /// <param name="homeRealm">Optional parameter for specifying the federated home realm location (when known)</param>
         /// <param name="cacheStrategy">The strategy for caching data <see cref="CacheStrategies"/></param>
-        public DiscoveryServiceManager(Uri serviceUri, string username, string password, string domain = null, Uri homeRealm = null,
+        public DiscoveryServiceManager(Uri serviceUri, string username, string password, string domain, Uri homeRealm = null,
             ICacheStrategy cacheStrategy = null)
             : base(serviceUri, username, password, domain, homeRealm, cacheStrategy) { }
 
@@ -133,13 +133,34 @@ namespace Microsoft.Pfe.Xrm
         /// </summary>
         /// <param name="serviceUri">The service endpoint location</param>
         /// <param name="credentials">The auth credentials</param>
+        /// <param name="cacheStrategy">The strategy for caching data <see cref="CacheStrategies"/></param>
         /// <remarks>
         /// <see cref="AuthenticationCredentials"/> can represent AD, Claims, or Cross-realm Claims <see cref="ClientCredentials"/>
         /// The authCredentials may already contain a <see cref="SecurityTokenResponse"/>
         /// For cross-realm (federated) scenarios it can contain a HomeRealm Uri by itself, or also include a <see cref="SecurityTokenResponse"/> from the federated realm
         /// </remarks>
-        public OrganizationServiceManager(Uri serviceUri, AuthenticationCredentials credentials)
-            : base(serviceUri, credentials) { }
+        public OrganizationServiceManager(Uri serviceUri, AuthenticationCredentials credentials, ICacheStrategy cacheStrategy = null)
+            : base(serviceUri, credentials, cacheStrategy) { }
+
+
+        /// <summary>
+        /// Establishes an <see cref="IOrganizationService"/> configuration at Uri location using supplied identity details
+        /// </summary>
+        /// <param name="serviceUri">The service endpoint location</param>
+        /// <param name="username">The username of the identity to authenticate</param>
+        /// <param name="password">The password of the identity to authenticate</param>
+        public OrganizationServiceManager(Uri serviceUri, string username, string password)
+            : base(serviceUri, username, password, null) { }
+
+        /// <summary>
+        /// Establishes an <see cref="IOrganizationService"/> configuration at Uri location using supplied identity details
+        /// </summary>
+        /// <param name="serviceUri">The service endpoint location</param>
+        /// <param name="username">The username of the identity to authenticate</param>
+        /// <param name="password">The password of the identity to authenticate</param>
+        /// <param name="cacheStrategy">The strategy for caching data <see cref="CacheStrategies"/></param>
+        public OrganizationServiceManager(Uri serviceUri, string username, string password, ICacheStrategy cacheStrategy = null)
+            : base(serviceUri, username, password, cacheStrategy) { }
 
         /// <summary>
         /// Establishes an <see cref="IOrganizationService"/> configuration at Uri location using supplied identity details
@@ -149,41 +170,45 @@ namespace Microsoft.Pfe.Xrm
         /// <param name="password">The password of the identity to authenticate</param>
         /// <param name="domain">Optional parameter for specifying the domain (when known)</param>
         /// <param name="homeRealm">Optional parameter for specifying the federated home realm location (when known)</param>
-        public OrganizationServiceManager(Uri serviceUri, string username, string password, string domain = null, Uri homeRealm = null)
-            : base(serviceUri, username, password, domain, homeRealm) { }
+        /// <param name="cacheStrategy">The strategy for caching data <see cref="CacheStrategies"/></param>
+        public OrganizationServiceManager(Uri serviceUri, string username, string password, string domain = null, Uri homeRealm = null, ICacheStrategy cacheStrategy = null)
+            : base(serviceUri, username, password, domain, homeRealm, cacheStrategy) { }
 
         /// <summary>
         /// Manages an established <see cref="IOrganizationService"/> configuration using supplied <see cref="AuthenticationCredentials"/>
         /// </summary>
         /// <param name="serviceManagement">The established service configuration management object</param>
         /// <param name="credentials">The auth credentials</param>
+        /// <param name="cacheStrategy">The strategy for caching data <see cref="CacheStrategies"/></param>
         /// <remarks>
         /// <see cref="AuthenticationCredentials"/> can represent AD, Claims, or Cross-realm Claims <see cref="ClientCredentials"/>
         /// The authCredentials may already contain a <see cref="SecurityTokenResponse"/>
         /// For cross-realm (federated) scenarios it can contain a HomeRealm Uri by itself, or also include a <see cref="SecurityTokenResponse"/> from the federated realm
         /// </remarks>
-        public OrganizationServiceManager(IServiceManagement<IOrganizationService> serviceManagement, AuthenticationCredentials credentials)
-            : base(serviceManagement, credentials) { }
+        public OrganizationServiceManager(IServiceManagement<IOrganizationService> serviceManagement, AuthenticationCredentials credentials, ICacheStrategy cacheStrategy = null)
+            : base(serviceManagement, credentials, cacheStrategy) { }
 
         /// <summary>
         /// Manages an established <see cref="IOrganizationService"/> configuration using DefaultNetworkCredentials
         /// </summary>
-        /// <param name="serviceManagement">The established service configuration management object</param>  
+        /// <param name="serviceManagement">The established service configuration management object</param> 
+        /// <param name="cacheStrategy">The strategy for caching data <see cref="CacheStrategies"/></param> 
         /// <remarks>
         /// This approach authenticates using DefaultNetworkCredentials (AD) since no credentials are supplied
         /// </remarks>
-        public OrganizationServiceManager(IServiceManagement<IOrganizationService> serviceManagement)
-            : base(serviceManagement) { }
+        public OrganizationServiceManager(IServiceManagement<IOrganizationService> serviceManagement, ICacheStrategy cacheStrategy = null)
+            : base(serviceManagement, cacheStrategy) { }
 
         /// <summary>
         /// Manages an established <see cref="IOrganizationService"/> configuration using DefaultNetworkCredentials
         /// </summary>
         /// <param name="serviceUri">Uri to use for establishing <see cref="IServiceManagement"/></param>  
+        /// <param name="cacheStrategy">The strategy for caching data <see cref="CacheStrategies"/></param>
         /// <remarks>
         /// This approach authenticates using DefaultNetworkCredentials (AD only) since no credentials are supplied
         /// </remarks>
-        public OrganizationServiceManager(Uri serviceUri)
-            : base(ServiceConfigurationFactory.CreateManagement<IOrganizationService>(serviceUri))
+        public OrganizationServiceManager(Uri serviceUri, ICacheStrategy cacheStrategy = null)
+            : base(ServiceConfigurationFactory.CreateManagement<IOrganizationService>(serviceUri), cacheStrategy)
         { }
 
         #endregion

@@ -545,6 +545,23 @@ namespace Microsoft.Pfe.Xrm
         /// Performs data parallelism on a collection of type <see cref="RetrieveRequest"/> to execute <see cref="IOrganizationService"/>.Retrieve() requests concurrently
         /// </summary>
         /// <param name="requests">The <see cref="RetrieveRequest"/> collection defining the entities to be retrieved</param>
+        /// <param name="errorHandler">An optional error handling operation. Handler will be passed the request that failed along with the corresponding <see cref="FaultException{OrganizationServiceFault}"/></param>
+        /// <returns>A collection of type <see cref="Entity"/> containing the retrieved entities</returns>
+        /// <remarks>
+        /// IMPORTANT!! RetrieveMultiple is the favored approach for retrieving multiple entities of the same type
+        /// This approach should only be used if trying to retrieve multiple individual records of varying entity types.
+        /// </remarks>
+        /// <exception cref="AggregateException">callers should catch <see cref="AggregateException"/> to handle exceptions raised by individual requests</exception>
+        public IEnumerable<Entity> Retrieve(IEnumerable<RetrieveRequest> requests,
+            Action<RetrieveRequest, FaultException<OrganizationServiceFault>> errorHandler = null)
+        {
+            return this.Retrieve(requests, new OrganizationServiceProxyOptions(), null, null, errorHandler);
+        }
+
+        /// <summary>
+        /// Performs data parallelism on a collection of type <see cref="RetrieveRequest"/> to execute <see cref="IOrganizationService"/>.Retrieve() requests concurrently
+        /// </summary>
+        /// <param name="requests">The <see cref="RetrieveRequest"/> collection defining the entities to be retrieved</param>
         /// <param name="slidingExpiration">The cache sliding expiration (If an ICachesStragegy Chosen <see cref="CacheStrategies"/>)</param>
         /// <param name="errorHandler">An optional error handling operation. Handler will be passed the request that failed along with the corresponding <see cref="FaultException{OrganizationServiceFault}"/></param>
         /// <returns>A collection of type <see cref="Entity"/> containing the retrieved entities</returns>
@@ -553,7 +570,7 @@ namespace Microsoft.Pfe.Xrm
         /// This approach should only be used if trying to retrieve multiple individual records of varying entity types.
         /// </remarks>
         /// <exception cref="AggregateException">callers should catch <see cref="AggregateException"/> to handle exceptions raised by individual requests</exception>
-        public IEnumerable<Entity> Retrieve(IEnumerable<RetrieveRequest> requests, TimeSpan? slidingExpiration = null, 
+        public IEnumerable<Entity> Retrieve(IEnumerable<RetrieveRequest> requests, TimeSpan slidingExpiration, 
             Action<RetrieveRequest, FaultException<OrganizationServiceFault>> errorHandler = null)
         {
             return this.Retrieve(requests, new OrganizationServiceProxyOptions(), slidingExpiration, null, errorHandler);
@@ -571,10 +588,29 @@ namespace Microsoft.Pfe.Xrm
         /// This approach should only be used if trying to retrieve multiple individual records of varying entity types.
         /// </remarks>
         /// <exception cref="AggregateException">callers should catch <see cref="AggregateException"/> to handle exceptions raised by individual requests</exception>
-        public IEnumerable<Entity> Retrieve(IEnumerable<RetrieveRequest> requests, DateTime? absoluteExpirationUtc = null, 
+        public IEnumerable<Entity> Retrieve(IEnumerable<RetrieveRequest> requests, DateTime absoluteExpirationUtc, 
             Action<RetrieveRequest, FaultException<OrganizationServiceFault>> errorHandler = null)
         {
             return this.Retrieve(requests, new OrganizationServiceProxyOptions(), null, absoluteExpirationUtc, errorHandler);
+        }
+
+        /// <summary>
+        /// Performs data parallelism on a collection of type <see cref="RetrieveRequest"/> to execute <see cref="IOrganizationService"/>.Retrieve() requests concurrently
+        /// </summary>
+        /// <param name="requests">The <see cref="RetrieveRequest"/> collection defining the entities to be retrieved</param>
+        /// <param name="options">The configurable options for the parallel <see cref="OrganizationServiceProxy"/> requests</param>
+        /// <param name="errorHandler">An optional error handling operation. Handler will be passed the request that failed along with the corresponding <see cref="FaultException{OrganizationServiceFault}"/></param>
+        /// <returns>A collection of type <see cref="Entity"/> containing the retrieved entities</returns>
+        /// <remarks>
+        /// IMPORTANT!! RetrieveMultiple is the favored approach for retrieving multiple entities of the same type
+        /// This approach should only be used if trying to retrieve multiple individual records of varying entity types.
+        /// </remarks>
+        /// <exception cref="AggregateException">callers should catch <see cref="AggregateException"/> to handle exceptions raised by individual requests</exception>
+        public IEnumerable<Entity> Retrieve(IEnumerable<RetrieveRequest> requests,
+            OrganizationServiceProxyOptions options,
+            Action<RetrieveRequest, FaultException<OrganizationServiceFault>> errorHandler = null)
+        {
+            return this.Retrieve(requests, options, null, null, errorHandler);
         }
 
         /// <summary>
@@ -591,7 +627,7 @@ namespace Microsoft.Pfe.Xrm
         /// </remarks>
         /// <exception cref="AggregateException">callers should catch <see cref="AggregateException"/> to handle exceptions raised by individual requests</exception>
         public IEnumerable<Entity> Retrieve(IEnumerable<RetrieveRequest> requests,
-            OrganizationServiceProxyOptions options, TimeSpan? slidingExpiration = null,
+            OrganizationServiceProxyOptions options, TimeSpan slidingExpiration,
             Action<RetrieveRequest, FaultException<OrganizationServiceFault>> errorHandler = null)
         {
             return this.Retrieve(requests, options, slidingExpiration, null, errorHandler);
@@ -611,7 +647,7 @@ namespace Microsoft.Pfe.Xrm
         /// </remarks>
         /// <exception cref="AggregateException">callers should catch <see cref="AggregateException"/> to handle exceptions raised by individual requests</exception>
         public IEnumerable<Entity> Retrieve(IEnumerable<RetrieveRequest> requests,
-            OrganizationServiceProxyOptions options, DateTime? absoluteExpirationUtc = null,
+            OrganizationServiceProxyOptions options, DateTime absoluteExpirationUtc,
             Action<RetrieveRequest, FaultException<OrganizationServiceFault>> errorHandler = null)
         {
             return this.Retrieve(requests, options, null, absoluteExpirationUtc, errorHandler);
@@ -632,7 +668,7 @@ namespace Microsoft.Pfe.Xrm
         /// </remarks>
         /// <exception cref="AggregateException">callers should catch <see cref="AggregateException"/> to handle exceptions raised by individual requests</exception>
         private IEnumerable<Entity> Retrieve(IEnumerable<RetrieveRequest> requests, OrganizationServiceProxyOptions options, 
-            TimeSpan? slidingExpiration = null, DateTime? absoluteExpirationUtc = null, 
+            TimeSpan? slidingExpiration, DateTime? absoluteExpirationUtc, 
             Action<RetrieveRequest, FaultException<OrganizationServiceFault>> errorHandler = null)
         {
             return this.ExecuteOperationWithResponse<RetrieveRequest, Entity>(requests, options,
@@ -673,6 +709,25 @@ namespace Microsoft.Pfe.Xrm
         /// Performs data parallelism on a keyed collection of <see cref="QueryBase"/> values to execute <see cref="IOrganizationService"/>.RetrieveMultiple() requests concurrently
         /// </summary>
         /// <param name="queries">The keyed collection of queries (<see cref="QueryExpression"/> or <see cref="FetchExpression"/>)</param>
+        /// <param name="errorHandler">An optional error handling operation. Handler will be passed the request that failed along with the corresponding <see cref="FaultException{OrganizationServiceFault}"/></param>
+        /// <returns>A keyed collection of <see cref="EntityCollection"/> values which represent the results of each query</returns>
+        /// <remarks>
+        /// Assumes that only the first page of results is desired (shouldRetrieveAllPages: false)
+        /// Assumes default proxy options should be used (options: new <see cref="OrganizationServiceProxyOptions"/>()).
+        /// 
+        /// IMPORTANT!! This approach should only be used if multiple queries for varying entity types are required or the result set can't be expressed in a single query. In the latter case, 
+        /// leverage NoLock=true where possible to reduce database contention.
+        /// </remarks>
+        /// <exception cref="AggregateException">callers should catch <see cref="AggregateException"/> to handle exceptions raised by individual requests</exception>
+        public IDictionary<string, EntityCollection> RetrieveMultiple(IDictionary<string, QueryBase> queries, Action<KeyValuePair<string, QueryBase>, FaultException<OrganizationServiceFault>> errorHandler = null)
+        {
+            return this.RetrieveMultiple(queries, false, new OrganizationServiceProxyOptions(), null, null, errorHandler);
+        }
+
+        /// <summary>
+        /// Performs data parallelism on a keyed collection of <see cref="QueryBase"/> values to execute <see cref="IOrganizationService"/>.RetrieveMultiple() requests concurrently
+        /// </summary>
+        /// <param name="queries">The keyed collection of queries (<see cref="QueryExpression"/> or <see cref="FetchExpression"/>)</param>
         /// <param name="slidingExpiration">The cache sliding expiration (If an ICachesStragegy Chosen <see cref="CacheStrategies"/>)</param>
         /// <param name="errorHandler">An optional error handling operation. Handler will be passed the request that failed along with the corresponding <see cref="FaultException{OrganizationServiceFault}"/></param>
         /// <returns>A keyed collection of <see cref="EntityCollection"/> values which represent the results of each query</returns>
@@ -684,7 +739,7 @@ namespace Microsoft.Pfe.Xrm
         /// leverage NoLock=true where possible to reduce database contention.
         /// </remarks>
         /// <exception cref="AggregateException">callers should catch <see cref="AggregateException"/> to handle exceptions raised by individual requests</exception>
-        public IDictionary<string, EntityCollection> RetrieveMultiple(IDictionary<string, QueryBase> queries, TimeSpan? slidingExpiration, Action<KeyValuePair<string, QueryBase>, FaultException<OrganizationServiceFault>> errorHandler = null)
+        public IDictionary<string, EntityCollection> RetrieveMultiple(IDictionary<string, QueryBase> queries, TimeSpan slidingExpiration, Action<KeyValuePair<string, QueryBase>, FaultException<OrganizationServiceFault>> errorHandler = null)
         {
             return this.RetrieveMultiple(queries, false, new OrganizationServiceProxyOptions(), slidingExpiration, null, errorHandler);
         }
@@ -704,9 +759,28 @@ namespace Microsoft.Pfe.Xrm
         /// leverage NoLock=true where possible to reduce database contention.
         /// </remarks>
         /// <exception cref="AggregateException">callers should catch <see cref="AggregateException"/> to handle exceptions raised by individual requests</exception>
-        public IDictionary<string, EntityCollection> RetrieveMultiple(IDictionary<string, QueryBase> queries, DateTime? absoluteExpirationUtc, Action<KeyValuePair<string, QueryBase>, FaultException<OrganizationServiceFault>> errorHandler = null)
+        public IDictionary<string, EntityCollection> RetrieveMultiple(IDictionary<string, QueryBase> queries, DateTime absoluteExpirationUtc, Action<KeyValuePair<string, QueryBase>, FaultException<OrganizationServiceFault>> errorHandler = null)
         {
             return this.RetrieveMultiple(queries, false, new OrganizationServiceProxyOptions(), null, absoluteExpirationUtc, errorHandler);
+        }
+
+        /// <summary>
+        /// Performs data parallelism on a keyed collection of <see cref="QueryBase"/> values to execute <see cref="IOrganizationService"/>.RetrieveMultiple() requests concurrently
+        /// </summary>
+        /// <param name="queries">The keyed collection of queries (<see cref="QueryExpression"/> or <see cref="FetchExpression"/>)</param>
+        /// <param name="options">The configurable options for the parallel <see cref="OrganizationServiceProxy"/> requests</param>
+        /// <param name="errorHandler">An optional error handling operation. Handler will be passed the request that failed along with the corresponding <see cref="FaultException{OrganizationServiceFault}"/></param>
+        /// <returns>A keyed collection of <see cref="EntityCollection"/> values which represent the results of each query</returns>
+        /// <remarks>
+        /// Assumes that only the first page of results is desired (shouldRetrieveAllPages: false)
+        /// 
+        /// IMPORTANT!! This approach should only be used if multiple queries for varying entity types are required or the result set can't be expressed in a single query. In the latter case, 
+        /// leverage NoLock=true where possible to reduce database contention.
+        /// </remarks>
+        /// <exception cref="AggregateException">callers should catch <see cref="AggregateException"/> to handle exceptions raised by individual requests</exception>
+        public IDictionary<string, EntityCollection> RetrieveMultiple(IDictionary<string, QueryBase> queries, OrganizationServiceProxyOptions options, Action<KeyValuePair<string, QueryBase>, FaultException<OrganizationServiceFault>> errorHandler = null)
+        {
+            return this.RetrieveMultiple(queries, false, options, null, null, errorHandler);
         }
 
         /// <summary>
@@ -724,7 +798,7 @@ namespace Microsoft.Pfe.Xrm
         /// leverage NoLock=true where possible to reduce database contention.
         /// </remarks>
         /// <exception cref="AggregateException">callers should catch <see cref="AggregateException"/> to handle exceptions raised by individual requests</exception>
-        public IDictionary<string, EntityCollection> RetrieveMultiple(IDictionary<string, QueryBase> queries, OrganizationServiceProxyOptions options, TimeSpan? slidingExpiration, Action<KeyValuePair<string, QueryBase>, FaultException<OrganizationServiceFault>> errorHandler = null)
+        public IDictionary<string, EntityCollection> RetrieveMultiple(IDictionary<string, QueryBase> queries, OrganizationServiceProxyOptions options, TimeSpan slidingExpiration, Action<KeyValuePair<string, QueryBase>, FaultException<OrganizationServiceFault>> errorHandler = null)
         {
             return this.RetrieveMultiple(queries, false, options, slidingExpiration, null, errorHandler);
         }
@@ -744,9 +818,28 @@ namespace Microsoft.Pfe.Xrm
         /// leverage NoLock=true where possible to reduce database contention.
         /// </remarks>
         /// <exception cref="AggregateException">callers should catch <see cref="AggregateException"/> to handle exceptions raised by individual requests</exception>
-        public IDictionary<string, EntityCollection> RetrieveMultiple(IDictionary<string, QueryBase> queries, OrganizationServiceProxyOptions options, DateTime? absoluteExpirationUtc, Action<KeyValuePair<string, QueryBase>, FaultException<OrganizationServiceFault>> errorHandler = null)
+        public IDictionary<string, EntityCollection> RetrieveMultiple(IDictionary<string, QueryBase> queries, OrganizationServiceProxyOptions options, DateTime absoluteExpirationUtc, Action<KeyValuePair<string, QueryBase>, FaultException<OrganizationServiceFault>> errorHandler = null)
         {
             return this.RetrieveMultiple(queries, false, options, null, absoluteExpirationUtc, errorHandler);
+        }
+
+        /// <summary>
+        /// Performs data parallelism on a keyed collection of <see cref="QueryBase"/> values to execute <see cref="IOrganizationService"/>.RetrieveMultiple() requests concurrently
+        /// </summary>
+        /// <param name="queries">The keyed collection of queries (<see cref="QueryExpression"/> or <see cref="FetchExpression"/>)</param>
+        /// <param name="shouldRetrieveAllPages">True = iterative requests will be performed to retrieve all pages, otherwise only the first results page will be returned for each query</param>
+        /// <param name="errorHandler">An optional error handling operation. Handler will be passed the request that failed along with the corresponding <see cref="FaultException{OrganizationServiceFault}"/></param>
+        /// <returns>A keyed collection of <see cref="EntityCollection"/> values which represent the results of each query</returns>
+        /// <remarks>
+        /// Assumes default proxy options should be used (options: new <see cref="OrganizationServiceProxyOptions"/>()).
+        /// 
+        /// IMPORTANT!! This approach should only be used if multiple queries for varying entity types are required or the result set can't be expressed in a single query. In the latter case, 
+        /// leverage NoLock=true where possible to reduce database contention.
+        /// </remarks>
+        /// <exception cref="AggregateException">callers should catch <see cref="AggregateException"/> to handle exceptions raised by individual requests</exception>
+        public IDictionary<string, EntityCollection> RetrieveMultiple(IDictionary<string, QueryBase> queries, bool shouldRetrieveAllPages, Action<KeyValuePair<string, QueryBase>, FaultException<OrganizationServiceFault>> errorHandler = null)
+        {
+            return this.RetrieveMultiple(queries, shouldRetrieveAllPages, new OrganizationServiceProxyOptions(), null, null, errorHandler);
         }
 
         /// <summary>
@@ -764,7 +857,7 @@ namespace Microsoft.Pfe.Xrm
         /// leverage NoLock=true where possible to reduce database contention.
         /// </remarks>
         /// <exception cref="AggregateException">callers should catch <see cref="AggregateException"/> to handle exceptions raised by individual requests</exception>
-        public IDictionary<string, EntityCollection> RetrieveMultiple(IDictionary<string, QueryBase> queries, bool shouldRetrieveAllPages, TimeSpan? slidingExpiration = null, Action<KeyValuePair<string, QueryBase>, FaultException<OrganizationServiceFault>> errorHandler = null)
+        public IDictionary<string, EntityCollection> RetrieveMultiple(IDictionary<string, QueryBase> queries, bool shouldRetrieveAllPages, TimeSpan slidingExpiration, Action<KeyValuePair<string, QueryBase>, FaultException<OrganizationServiceFault>> errorHandler = null)
         {
             return this.RetrieveMultiple(queries, shouldRetrieveAllPages, new OrganizationServiceProxyOptions(), slidingExpiration, null, errorHandler);
         }
@@ -784,9 +877,29 @@ namespace Microsoft.Pfe.Xrm
         /// leverage NoLock=true where possible to reduce database contention.
         /// </remarks>
         /// <exception cref="AggregateException">callers should catch <see cref="AggregateException"/> to handle exceptions raised by individual requests</exception>
-        public IDictionary<string, EntityCollection> RetrieveMultiple(IDictionary<string, QueryBase> queries, bool shouldRetrieveAllPages, DateTime? absoluteExpirationUtc = null, Action<KeyValuePair<string, QueryBase>, FaultException<OrganizationServiceFault>> errorHandler = null)
+        public IDictionary<string, EntityCollection> RetrieveMultiple(IDictionary<string, QueryBase> queries, bool shouldRetrieveAllPages, DateTime absoluteExpirationUtc, Action<KeyValuePair<string, QueryBase>, FaultException<OrganizationServiceFault>> errorHandler = null)
         {
             return this.RetrieveMultiple(queries, shouldRetrieveAllPages, new OrganizationServiceProxyOptions(), null, absoluteExpirationUtc, errorHandler);
+        }
+
+        /// <summary>
+        /// Performs data parallelism on a keyed collection of <see cref="QueryBase"/> values to execute <see cref="IOrganizationService"/>.RetrieveMultiple() requests concurrently
+        /// </summary>
+        /// <param name="queries">The keyed collection of queries (<see cref="QueryExpression"/> or <see cref="FetchExpression"/>)</param>
+        /// <param name="shouldRetrieveAllPages">True = iterative requests will be performed to retrieve all pages, otherwise only the first results page will be returned for each query</param>
+        /// <param name="options">The configurable options for the parallel <see cref="OrganizationServiceProxy"/> requests</param>
+        /// <param name="errorHandler">An optional error handling operation. Handler will be passed the request that failed along with the corresponding <see cref="FaultException{OrganizationServiceFault}"/></param>        
+        /// <returns>A keyed collection of <see cref="EntityCollection"/> values which represent the results of each query</returns>
+        /// <remarks>
+        /// IMPORTANT!! This approach should only be used if multiple queries for varying entity types are required or the result set can't be expressed in a single query. In the latter case, 
+        /// leverage NoLock=true where possible to reduce database contention.
+        /// </remarks>
+        /// <exception cref="AggregateException">callers should catch <see cref="AggregateException"/> to handle exceptions raised by individual requests</exception>
+        public IDictionary<string, EntityCollection> RetrieveMultiple(IDictionary<string, QueryBase> queries, bool shouldRetrieveAllPages,
+            OrganizationServiceProxyOptions options,
+            Action<KeyValuePair<string, QueryBase>, FaultException<OrganizationServiceFault>> errorHandler = null)
+        {
+            return this.RetrieveMultiple(queries, shouldRetrieveAllPages, options, null, null, errorHandler);
         }
 
         /// <summary>
@@ -804,7 +917,7 @@ namespace Microsoft.Pfe.Xrm
         /// </remarks>
         /// <exception cref="AggregateException">callers should catch <see cref="AggregateException"/> to handle exceptions raised by individual requests</exception>
         public IDictionary<string, EntityCollection> RetrieveMultiple(IDictionary<string, QueryBase> queries, bool shouldRetrieveAllPages,
-            OrganizationServiceProxyOptions options, TimeSpan? slidingExpiration,
+            OrganizationServiceProxyOptions options, TimeSpan slidingExpiration,
             Action<KeyValuePair<string, QueryBase>, FaultException<OrganizationServiceFault>> errorHandler = null)
         {
             return this.RetrieveMultiple(queries, shouldRetrieveAllPages, options, slidingExpiration, null, errorHandler);
@@ -825,7 +938,7 @@ namespace Microsoft.Pfe.Xrm
         /// </remarks>
         /// <exception cref="AggregateException">callers should catch <see cref="AggregateException"/> to handle exceptions raised by individual requests</exception>
         public IDictionary<string, EntityCollection> RetrieveMultiple(IDictionary<string, QueryBase> queries,
-            bool shouldRetrieveAllPages, OrganizationServiceProxyOptions options, DateTime? absoluteExpirationUtc,
+            bool shouldRetrieveAllPages, OrganizationServiceProxyOptions options, DateTime absoluteExpirationUtc,
             Action<KeyValuePair<string, QueryBase>, FaultException<OrganizationServiceFault>> errorHandler = null)
         {
             return this.RetrieveMultiple(queries, shouldRetrieveAllPages, options, null, absoluteExpirationUtc, errorHandler);

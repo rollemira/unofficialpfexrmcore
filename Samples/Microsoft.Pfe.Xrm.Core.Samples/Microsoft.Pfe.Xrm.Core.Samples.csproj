@@ -36,16 +36,14 @@
   </PropertyGroup>
   <ItemGroup>
     <Reference Include="Microsoft.Crm.Sdk.Proxy, Version=8.0.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35, processorArchitecture=MSIL">
-      <HintPath>packages\Microsoft.CrmSdk.CoreAssemblies.8.0.2.1\lib\net45\Microsoft.Crm.Sdk.Proxy.dll</HintPath>
-      <Private>True</Private>
+      <HintPath>packages\Microsoft.CrmSdk.CoreAssemblies.8.2.0.2\lib\net452\Microsoft.Crm.Sdk.Proxy.dll</HintPath>
     </Reference>
-    <Reference Include="Microsoft.Pfe.Xrm.Core, Version=8.0.1603.1, Culture=neutral, PublicKeyToken=25999261b78c78be, processorArchitecture=MSIL">
-      <HintPath>packages\Microsoft.Pfe.Xrm.CoreV8.8.0.1603.1\lib\net45\Microsoft.Pfe.Xrm.Core.dll</HintPath>
+    <Reference Include="Microsoft.IdentityModel, Version=3.5.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35, processorArchitecture=MSIL">
+      <HintPath>packages\Microsoft.IdentityModel.6.1.7600.16394\lib\net35\Microsoft.IdentityModel.dll</HintPath>
       <Private>True</Private>
     </Reference>
     <Reference Include="Microsoft.Xrm.Sdk, Version=8.0.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35, processorArchitecture=MSIL">
-      <HintPath>packages\Microsoft.CrmSdk.CoreAssemblies.8.0.2.1\lib\net45\Microsoft.Xrm.Sdk.dll</HintPath>
-      <Private>True</Private>
+      <HintPath>packages\Microsoft.CrmSdk.CoreAssemblies.8.2.0.2\lib\net452\Microsoft.Xrm.Sdk.dll</HintPath>
     </Reference>
     <Reference Include="System" />
     <Reference Include="System.Core" />
@@ -66,10 +64,19 @@
   <ItemGroup>
     <Compile Include="ParallelDiscoverySamples.cs" />
     <Compile Include="ParallelRequestSamples.cs" />
+    <Compile Include="ParallelRetrieveMultipleWithInMemoryAbsoluteCacheExpirationSamples.cs" />
+    <Compile Include="ParallelRetrieveMultipleWithInMemorySlidingCacheExpirationSamples.cs" />
     <Compile Include="ParallelRetrieveMultipleSamples.cs" />
     <Compile Include="ParallelExecuteSamples.cs" />
+    <Compile Include="ParallelRetrieveWithInMemoryCacheSamples.cs" />
     <Compile Include="XrmServiceManagerSamples.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\v8.1.2\Microsoft.Pfe.Xrm.Core.csproj">
+      <Project>{b1349e30-c33e-4f11-b560-f48918b8f573}</Project>
+      <Name>Microsoft.Pfe.Xrm.Core</Name>
+    </ProjectReference>
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />
