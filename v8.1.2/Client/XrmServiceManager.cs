@@ -684,7 +684,7 @@ namespace Microsoft.Pfe.Xrm
         /// Constructor
         /// </summary>
         /// <param name="cacheStrategy">The cache strategy to be used, default is CacheStrategies.None <see cref="CacheStrategies"/></param>
-        public XrmServiceManagerBase(ICacheStrategy cacheStrategy)
+        public XrmServiceManagerBase(ICacheStrategy cacheStrategy = null)
         {
             //if cache strategy is null, assume no caching
             Cache = new ServiceManagerCache(cacheStrategy ?? CacheStrategies.None);
