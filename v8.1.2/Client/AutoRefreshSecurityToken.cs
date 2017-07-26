@@ -12,73 +12,92 @@
 //  IMPLIED WARRANTIES OF MERCHANTABILITY AND/OR FITNESS FOR A
 //  PARTICULAR PURPOSE.
 // =====================================================================
-
-using System;
-using System.ServiceModel;
-using Microsoft.Xrm.Sdk.Client;
-
 namespace Microsoft.Pfe.Xrm
 {
+    using System;
+    using System.Collections.Generic;
+    using System.Linq;
+    using System.Runtime.Serialization;
+    using System.ServiceModel;
+    using System.ServiceModel.Description;
+    using System.Text;
+
+    using Microsoft.Xrm.Sdk;
+    using Microsoft.Xrm.Sdk.Client;    
+
     /// <summary>
-    ///     Class that handles renewing the <see cref="SecurityTokenResponse" /> if expired
+    /// Class that handles renewing the <see cref="SecurityTokenResponse"/> if expired
     /// </summary>
     public sealed class AutoRefreshSecurityToken<TProxy, TService>
-        where TProxy : ServiceProxy<TService> where TService : class
-    {
-        private readonly TProxy _proxy;
+        where TProxy : ServiceProxy<TService>
+        where TService : class
+    {        
+        private TProxy _proxy;
 
         /// <summary>
-        ///     Instantiates an instance of the proxy class
+        /// Instantiates an instance of the proxy class
         /// </summary>
         /// <param name="proxy">Proxy that will be used to authenticate the user</param>
         public AutoRefreshSecurityToken(TProxy proxy)
         {
-            if (proxy == null) throw new ArgumentNullException("proxy");
+            if (proxy == null)
+            {
+                throw new ArgumentNullException("proxy");
+            }
 
-            _proxy = proxy;
+            this._proxy = proxy;
         }
 
         /// <summary>
-        ///     Prepares authentication before authenticated
+        /// Prepares authentication before authenticated
         /// </summary>
         public void PrepareCredentials()
         {
-            if (_proxy.ClientCredentials == null) return;
+            if (this._proxy.ClientCredentials == null)
+            {
+                return;
+            }
 
-            switch (_proxy.ServiceConfiguration.AuthenticationType)
+            switch (this._proxy.ServiceConfiguration.AuthenticationType)
             {
                 case AuthenticationProviderType.ActiveDirectory:
-                    _proxy.ClientCredentials.UserName.UserName = null;
-                    _proxy.ClientCredentials.UserName.Password = null;
+                    this._proxy.ClientCredentials.UserName.UserName = null;
+                    this._proxy.ClientCredentials.UserName.Password = null;
                     break;
                 case AuthenticationProviderType.Federation:
                 case AuthenticationProviderType.OnlineFederation:
                 case AuthenticationProviderType.LiveId:
-                    _proxy.ClientCredentials.Windows.ClientCredential = null;
+                    this._proxy.ClientCredentials.Windows.ClientCredential = null;
                     break;
-                default: return;
+                default:
+                    return;
             }
         }
 
         /// <summary>
-        ///     Renews the token for non-AD scenarios (if it is near expiration or has expired)
+        /// Renews the token for non-AD scenarios (if it is near expiration or has expired)
         /// </summary>
         public void RenewTokenIfRequired()
         {
-            if (_proxy.ServiceConfiguration.AuthenticationType != AuthenticationProviderType.ActiveDirectory &&
-                _proxy.SecurityTokenResponse != null && DateTime.UtcNow.AddMinutes(15) >=
-                _proxy.SecurityTokenResponse.Response.Lifetime.Expires)
+            if (this._proxy.ServiceConfiguration.AuthenticationType != AuthenticationProviderType.ActiveDirectory
+                && this._proxy.SecurityTokenResponse != null
+                && DateTime.UtcNow.AddMinutes(15) >= this._proxy.SecurityTokenResponse.Response.Lifetime.Expires)
+            {
                 try
                 {
-                    _proxy.Authenticate();
+                    this._proxy.Authenticate();
                 }
                 catch (CommunicationException)
                 {
-                    if (_proxy.SecurityTokenResponse == null ||
-                        DateTime.UtcNow >= _proxy.SecurityTokenResponse.Response.Lifetime.Expires) throw;
+                    if (this._proxy.SecurityTokenResponse == null
+                        || DateTime.UtcNow >= this._proxy.SecurityTokenResponse.Response.Lifetime.Expires)
+                    {
+                        throw;
+                    }
 
                     // Ignore the exception 
                 }
+            }
         }
     }
 }

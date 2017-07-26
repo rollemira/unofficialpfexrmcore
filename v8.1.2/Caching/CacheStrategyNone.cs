@@ -3,20 +3,13 @@
 namespace Microsoft.Pfe.Xrm.Caching
 {
     /// <summary>
-    ///     A wrapper for the chosen cache strategy
+    /// A cache strategy that represents no caching
     /// </summary>
-    public sealed class ServiceManagerCache : IDisposable
+    public sealed class CacheStrategyNone : ICacheStrategy
     {
-        private readonly ICacheStrategy _cacheStrategy;
-
-        /// <summary>
-        /// Constructor
-        /// </summary>
-        /// <param name="cacheStrategy">The chosen cache strategy</param>
-        /// <see cref="CacheStrategies"/>
-        public ServiceManagerCache(ICacheStrategy cacheStrategy)
+        public void Dispose()
         {
-            _cacheStrategy = cacheStrategy;
+            
         }
 
         /// <summary>
@@ -26,22 +19,13 @@ namespace Microsoft.Pfe.Xrm.Caching
         /// <param name="o">Item to be cached</param>
         /// <param name="key">Name of item</param>
         /// <param name="slidingExpiration">Sliding cache expiration</param>
-        /// <param name="absoluteExpiration">Absolute cache expiration</param>
+        /// <param name="absoluteExpirationUtc">Absolute cache expiration (Should be in UTC)</param>
         /// <remarks>
         /// Absolute expirations should ALWAYS be UTC, and should override sliding expirations
         /// </remarks>
-        public void Add<T>(T o, string key, TimeSpan? slidingExpiration = null, DateTime? absoluteExpiration = null)
+        public void Add<T>(T o, string key, TimeSpan? slidingExpiration = null, DateTime? absoluteExpirationUtc = null)
         {
-            _cacheStrategy.Add(o, key, slidingExpiration, absoluteExpiration);
-        }
-
-        /// <summary>
-        ///     Remove item from cache
-        /// </summary>
-        /// <param name="key">Name of cached item</param>
-        public void Remove(string key)
-        {
-            _cacheStrategy.Remove(key);
+            
         }
 
         /// <summary>
@@ -51,7 +35,7 @@ namespace Microsoft.Pfe.Xrm.Caching
         /// <returns></returns>
         public bool Exists(string key)
         {
-            return _cacheStrategy.Exists(key);
+            return false;
         }
 
         /// <summary>
@@ -62,12 +46,16 @@ namespace Microsoft.Pfe.Xrm.Caching
         /// <returns>Cached item as type</returns>
         public T Get<T>(string key)
         {
-            return _cacheStrategy.Get<T>(key);
+            return default(T);
         }
 
-        public void Dispose()
+        /// <summary>
+        ///     Remove item from cache
+        /// </summary>
+        /// <param name="key">Name of cached item</param>
+        public void Remove(string key)
         {
-            _cacheStrategy?.Dispose();
+            
         }
     }
 }

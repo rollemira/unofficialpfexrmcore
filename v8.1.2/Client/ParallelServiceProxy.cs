@@ -13,72 +13,237 @@
 
  =================================================================================================================================*/
 
-using System;
-using System.Collections.Concurrent;
-using System.Collections.Generic;
-using System.Linq;
-using System.ServiceModel;
-using System.Threading;
-using System.Threading.Tasks;
-using Microsoft.Pfe.Xrm.Caching;
-using Microsoft.Xrm.Sdk;
-using Microsoft.Xrm.Sdk.Client;
-using Microsoft.Xrm.Sdk.Discovery;
-using Microsoft.Xrm.Sdk.Messages;
-using Microsoft.Xrm.Sdk.Query;
-using Newtonsoft.Json;
-
 namespace Microsoft.Pfe.Xrm
 {
+    using System;
+    using System.Collections.Concurrent;
+    using System.Collections.Generic;
+    using System.Linq;
+    using System.ServiceModel;
+    using System.Text;
+    using System.Threading;
+    using System.Threading.Tasks;
+
+    using Microsoft.Pfe.Xrm.Caching;
+
+    using Microsoft.Xrm.Sdk;
+    using Microsoft.Xrm.Sdk.Client;
+    using Microsoft.Xrm.Sdk.Discovery;
+    using Microsoft.Xrm.Sdk.Messages;
+    using Microsoft.Xrm.Sdk.Query;
+
     /// <summary>
-    ///     Class for executing concurrent <see cref="IDiscoveryService" /> operations
+    /// Class for executing concurrent <see cref="IDiscoveryService"/> operations
     /// </summary>
     /// <remarks>
-    ///     During parallel operations, <see cref="DiscoveryServiceProxy" /> instances are aligned with individual data
-    ///     partitions
-    ///     using a thread local class variable to avoid service channel thread-safety issues.
+    /// During parallel operations, <see cref="DiscoveryServiceProxy"/> instances are aligned with individual data partitions
+    /// using a thread local class variable to avoid service channel thread-safety issues.
     /// </remarks>
     public class ParallelDiscoveryServiceProxy : ParallelServiceProxy<DiscoveryServiceManager>
     {
-        #region Core Parallel Execution Method <TRequest, TResponse>
+        #region Constructor(s)
+
+        public ParallelDiscoveryServiceProxy(DiscoveryServiceManager serviceManager)
+            : base(serviceManager) { }
+
+        public ParallelDiscoveryServiceProxy(DiscoveryServiceManager serviceManager, int maxDegreeOfParallelism)
+            : base(serviceManager, maxDegreeOfParallelism) { }
+
+        #endregion
+
+        #region Multi-threaded IDiscoveryService Operations
+
+        #region IDiscoveryService.Execute()
 
         /// <summary>
-        ///     Core implementation of the parallel pattern for service operations that should collect responses to each request
+        /// Performs data parallelism on a keyed collection of type <see cref="DiscoveryRequest"/> to execute <see cref="IDiscoveryService"/>.Execute() requests concurrently
+        /// </summary>
+        /// <param name="requests">The keyed collection requests to be submitted</param>
+        /// <param name="errorHandler">An optional error handling operation. Handler will be passed the request that failed along with the corresponding <see cref="FaultException{OrganizationServiceFault}"/></param>        
+        /// <returns>A keyed collection of type <see cref="DiscoveryResponse"/> containing response to the <see cref="DiscoveryRequest"/></returns>
+        /// <exception cref="AggregateException">callers should catch <see cref="AggregateException"/> to handle exceptions raised by individual requests</exception>
+        public IDictionary<string, DiscoveryResponse> Execute(IDictionary<string, DiscoveryRequest> requests, Action<KeyValuePair<string, DiscoveryRequest>, FaultException<DiscoveryServiceFault>> errorHandler = null)
+        {
+            return this.Execute(requests, new DiscoveryServiceProxyOptions(), errorHandler);
+        }
+
+        /// <summary>
+        /// Performs data parallelism on a keyed collection of type <see cref="DiscoveryRequest"/> to execute <see cref="IDiscoveryService"/>.Execute() requests concurrently
+        /// </summary>
+        /// <param name="requests">The keyed collection of requests to be submitted</param>
+        /// <param name="options">The configurable options for the parallel <see cref="DiscoveryServiceProxy"/> requests</param>
+        /// <param name="errorHandler">An optional error handling operation. Handler will be passed the request that failed along with the corresponding <see cref="FaultException{OrganizationServiceFault}"/></param>        
+        /// <returns>A keyed collection of type <see cref="DiscoveryResponse"/> containing response to the <see cref="DiscoveryRequest"/></returns>
+        /// <exception cref="AggregateException">callers should catch <see cref="AggregateException"/> to handle exceptions raised by individual requests</exception>
+        public IDictionary<string, DiscoveryResponse> Execute(IDictionary<string, DiscoveryRequest> requests, DiscoveryServiceProxyOptions options, Action<KeyValuePair<string, DiscoveryRequest>, FaultException<DiscoveryServiceFault>> errorHandler = null)
+        {
+            return this.ExecuteOperationWithResponse<KeyValuePair<string, DiscoveryRequest>, KeyValuePair<string, DiscoveryResponse>>(requests, options,
+                (request, context) =>
+                {
+                    var response = context.Local.Execute(request.Value);
+
+                    //Collect the result from each iteration in this partition
+                    context.Results.Add(new KeyValuePair<string, DiscoveryResponse>(request.Key, response));
+                },
+                errorHandler)
+                .ToDictionary(r => r.Key, r => r.Value);
+        }
+
+        /// <summary>
+        /// Performs data parallelism on a keyed collection of type TRequest to execute <see cref="IDiscoveryService"/>.Execute() requests concurrently
+        /// </summary>
+        /// <typeparam name="TRequest">The request type that derives from <see cref="DiscoveryRequest"/></typeparam>
+        /// <typeparam name="TResponse">The response type that derives from <see cref="DiscoveryResponse"/></typeparam>
+        /// <param name="requests">The keyed collection of requests to be executed</param>
+        /// <param name="errorHandler">An optional error handling operation. Handler will be passed the request that failed along with the corresponding <see cref="FaultException{OrganizationServiceFault}"/></param>        
+        /// <returns>A keyed collection of type TResponse containing the responses to each executed request</returns>
+        /// <exception cref="AggregateException">callers should catch <see cref="AggregateException"/> to handle exceptions raised by individual requests</exception>
+        public IDictionary<string, TResponse> Execute<TRequest, TResponse>(IDictionary<string, TRequest> requests, Action<KeyValuePair<string, TRequest>, FaultException<DiscoveryServiceFault>> errorHandler = null)
+            where TRequest : DiscoveryRequest
+            where TResponse : DiscoveryResponse
+        {
+            return this.Execute<TRequest, TResponse>(requests, new DiscoveryServiceProxyOptions(), errorHandler);
+        }
+
+        /// <summary>
+        /// Performs data parallelism on a keyed collection of type TRequest to execute <see cref="IDiscoveryService"/>.Execute() requests concurrently
+        /// </summary>
+        /// <typeparam name="TRequest">The request type that derives from <see cref="DiscoveryRequest"/></typeparam>
+        /// <typeparam name="TResponse">The response type that derives from <see cref="DiscoveryResponse"/></typeparam>
+        /// <param name="requests">The keyed collection of requests to be executed</param>
+        /// <param name="options">The configurable options for the parallel <see cref="DiscoveryServiceProxy"/> requests</param>
+        /// <param name="errorHandler">An optional error handling operation. Handler will be passed the request that failed along with the corresponding <see cref="FaultException{OrganizationServiceFault}"/></param>        
+        /// <returns>A keyed collection of type TResponse containing the responses to each executed request</returns>
+        /// <exception cref="AggregateException">callers should catch <see cref="AggregateException"/> to handle exceptions raised by individual requests</exception>
+        public IDictionary<string, TResponse> Execute<TRequest, TResponse>(IDictionary<string, TRequest> requests, DiscoveryServiceProxyOptions options, Action<KeyValuePair<string, TRequest>, FaultException<DiscoveryServiceFault>> errorHandler = null)
+            where TRequest : DiscoveryRequest
+            where TResponse : DiscoveryResponse
+        {
+            return this.ExecuteOperationWithResponse<KeyValuePair<string, TRequest>, KeyValuePair<string, TResponse>>(requests, options,
+                (request, context) =>
+                {
+                    var response = (TResponse)context.Local.Execute(request.Value);
+
+                    context.Results.Add(new KeyValuePair<string, TResponse>(request.Key, response));
+                },
+                errorHandler)
+                .ToDictionary(r => r.Key, r => r.Value);
+        }
+        
+        /// <summary>
+        /// Performs data parallelism on a collection of type <see cref="DiscoveryRequest"/> to execute <see cref="IDiscoveryService"/>.Execute() requests concurrently
+        /// </summary>
+        /// <param name="requests">The requests to be submitted</param>
+        /// <param name="errorHandler">An optional error handling operation. Handler will be passed the request that failed along with the corresponding <see cref="FaultException{OrganizationServiceFault}"/></param>        
+        /// <returns>A collection of type <see cref="DiscoveryResponse"/> containing response to the <see cref="DiscoveryRequest"/></returns>
+        /// <exception cref="AggregateException">callers should catch <see cref="AggregateException"/> to handle exceptions raised by individual requests</exception>
+        public IEnumerable<DiscoveryResponse> Execute(IEnumerable<DiscoveryRequest> requests, Action<DiscoveryRequest, FaultException<DiscoveryServiceFault>> errorHandler = null)
+        {
+            return this.Execute(requests, new DiscoveryServiceProxyOptions(), errorHandler);
+        }
+
+        /// <summary>
+        /// Performs data parallelism on a collection of type <see cref="DiscoveryRequest"/> to execute <see cref="IDiscoveryService"/>.Execute() requests concurrently
+        /// </summary>
+        /// <param name="requests">The requests to be submitted</param>
+        /// <param name="options">The configurable options for the parallel <see cref="DiscoveryServiceProxy"/> requests</param>
+        /// <param name="errorHandler">An optional error handling operation. Handler will be passed the request that failed along with the corresponding <see cref="FaultException{OrganizationServiceFault}"/></param>        
+        /// <returns>A collection of type <see cref="DiscoveryResponse"/> containing response to the <see cref="DiscoveryRequest"/></returns>
+        /// <exception cref="AggregateException">callers should catch <see cref="AggregateException"/> to handle exceptions raised by individual requests</exception>
+        public IEnumerable<DiscoveryResponse> Execute(IEnumerable<DiscoveryRequest> requests, DiscoveryServiceProxyOptions options, Action<DiscoveryRequest, FaultException<DiscoveryServiceFault>> errorHandler = null)
+        {
+            return this.ExecuteOperationWithResponse<DiscoveryRequest, DiscoveryResponse>(requests, options,
+                (request, context) =>
+                {
+                    var response = context.Local.Execute(request);
+
+                    //Collect the result from each iteration in this partition
+                    context.Results.Add(response);
+                },
+                errorHandler);
+        }
+
+        /// <summary>
+        /// Performs data parallelism on a collection of type TRequest to execute <see cref="IDiscoveryService"/>.Execute() requests concurrently
+        /// </summary>
+        /// <typeparam name="TRequest">The request type that derives from <see cref="DiscoveryRequest"/></typeparam>
+        /// <typeparam name="TResponse">The response type that derives from <see cref="DiscoveryResponse"/></typeparam>
+        /// <param name="requests">The requests to be executed</param>
+        /// <param name="errorHandler">An optional error handling operation. Handler will be passed the request that failed along with the corresponding <see cref="FaultException{OrganizationServiceFault}"/></param>        
+        /// <returns>A collection of type TResponse containing the responses to each executed request</returns>
+        /// <exception cref="AggregateException">callers should catch <see cref="AggregateException"/> to handle exceptions raised by individual requests</exception>
+        public IEnumerable<TResponse> Execute<TRequest, TResponse>(IEnumerable<TRequest> requests, Action<TRequest, FaultException<DiscoveryServiceFault>> errorHandler = null)
+            where TRequest : DiscoveryRequest
+            where TResponse : DiscoveryResponse
+        {
+            return this.Execute<TRequest, TResponse>(requests, new DiscoveryServiceProxyOptions(), errorHandler);
+        }
+
+        /// <summary>
+        /// Performs data parallelism on a collection of type TRequest to execute <see cref="IDiscoveryService"/>.Execute() requests concurrently
+        /// </summary>
+        /// <typeparam name="TRequest">The request type that derives from <see cref="DiscoveryRequest"/></typeparam>
+        /// <typeparam name="TResponse">The response type that derives from <see cref="DiscoveryResponse"/></typeparam>
+        /// <param name="requests">The requests to be executed</param>
+        /// <param name="options">The configurable options for the parallel <see cref="DiscoveryServiceProxy"/> requests</param>
+        /// <param name="errorHandler">An optional error handling operation. Handler will be passed the request that failed along with the corresponding <see cref="FaultException{OrganizationServiceFault}"/></param>        
+        /// <returns>A collection of type TResponse containing the responses to each executed request</returns>
+        /// <exception cref="AggregateException">callers should catch <see cref="AggregateException"/> to handle exceptions raised by individual requests</exception>
+        public IEnumerable<TResponse> Execute<TRequest, TResponse>(IEnumerable<TRequest> requests, DiscoveryServiceProxyOptions options, Action<TRequest, FaultException<DiscoveryServiceFault>> errorHandler = null)
+            where TRequest : DiscoveryRequest
+            where TResponse : DiscoveryResponse
+        {
+            return this.ExecuteOperationWithResponse<TRequest, TResponse>(requests, options,
+                (request, context) =>
+                {
+                    var response = (TResponse)context.Local.Execute(request);
+
+                    context.Results.Add(response);
+                },
+                errorHandler);
+        }
+
+        #endregion
+
+        #endregion
+
+        #region Core Parallel Execution Method <TRequest, TResponse>
+        
+        /// <summary>
+        /// Core implementation of the parallel pattern for service operations that should collect responses to each request
         /// </summary>
         /// <typeparam name="TRequest">The type being submitted in the service operation request</typeparam>
         /// <typeparam name="TResponse">The response type collected from each request and returned</typeparam>
         /// <param name="requests">The collection of requests to be submitted</param>
-        /// <param name="options">The configurable options for the <see cref="DiscoveryServiceProxy" /> requests</param>
+        /// <param name="options">The configurable options for the <see cref="DiscoveryServiceProxy"/> requests</param>
         /// <param name="coreOperation">The specific operation being executed</param>
         /// <returns>A collection of specified response types from service operation requests</returns>
         /// <remarks>
-        ///     IMPORTANT!! When defining the core operation, be sure to add responses you wish to collect via
-        ///     proxy.Results.Add(TResponse item);
+        /// IMPORTANT!! When defining the core operation, be sure to add responses you wish to collect via proxy.Results.Add(TResponse item);
         /// </remarks>
-        private IEnumerable<TResponse> ExecuteOperationWithResponse<TRequest, TResponse>(IEnumerable<TRequest> requests,
-            DiscoveryServiceProxyOptions options,
-            Action<TRequest, ParallelDiscoveryOperationContext<TRequest, TResponse>> coreOperation,
-            Action<TRequest, FaultException<DiscoveryServiceFault>> errorHandler)
+        private IEnumerable<TResponse> ExecuteOperationWithResponse<TRequest, TResponse>(IEnumerable<TRequest> requests, DiscoveryServiceProxyOptions options,
+            Action<TRequest, ParallelDiscoveryOperationContext<TRequest, TResponse>> coreOperation, Action<TRequest, FaultException<DiscoveryServiceFault>> errorHandler)
         {
             var allResponses = new ConcurrentBag<TResponse>();
             var allFailures = new ConcurrentBag<ParallelDiscoveryOperationFailure<TRequest>>();
 
             // Inline method for initializing a new discovery service channel
             Func<ManagedTokenDiscoveryServiceProxy> proxyInit = () =>
-            {
-                var proxy = ServiceManager.GetProxy();
-                proxy.SetProxyOptions(options);
+                {
+                    var proxy = this.ServiceManager.GetProxy();
+                    proxy.SetProxyOptions(options);
 
-                return proxy;
-            };
+                    return proxy;
+                };            
 
             using (var threadLocalProxy = new ThreadLocal<ManagedTokenDiscoveryServiceProxy>(proxyInit, true))
             {
                 try
                 {
-                    Parallel.ForEach(requests, new ParallelOptions {MaxDegreeOfParallelism = MaxDegreeOfParallelism},
+                    Parallel.ForEach<TRequest, ParallelDiscoveryOperationContext<TRequest, TResponse>>(requests,
+                        new ParallelOptions() { MaxDegreeOfParallelism = this.MaxDegreeOfParallelism },
                         () => new ParallelDiscoveryOperationContext<TRequest, TResponse>(threadLocalProxy.Value),
-                        (request, loopState, index, context) =>
+                        (request, loopState, index, context) => 
                         {
                             try
                             {
@@ -88,13 +253,18 @@ namespace Microsoft.Pfe.Xrm
                             {
                                 // Track faults locally
                                 if (errorHandler != null)
-                                    context.Failures.Add(
-                                        new ParallelDiscoveryOperationFailure<TRequest>(request, fault));
-                                else throw;
+                                {
+                                    context.Failures.Add(new ParallelDiscoveryOperationFailure<TRequest>(request, fault));
+                                }
+                                else
+                                {
+                                    throw;
+                                }
                             }
 
                             return context;
-                        }, context =>
+                        },
+                        (context) =>
                         {
                             // Join results and faults together
                             Array.ForEach(context.Results.ToArray(), r => allResponses.Add(r));
@@ -112,281 +282,41 @@ namespace Microsoft.Pfe.Xrm
 
             // Handle faults
             if (errorHandler != null)
-                foreach (var failure in allFailures) errorHandler(failure.Request, failure.Exception);
+            {
+                foreach (var failure in allFailures)
+                {
+                    errorHandler(failure.Request, failure.Exception);
+                }
+            }
 
             return allResponses;
         }
 
         #endregion
-
-        #region Constructor(s)
-
-        public ParallelDiscoveryServiceProxy(DiscoveryServiceManager serviceManager) : base(serviceManager)
-        {
-        }
-
-        public ParallelDiscoveryServiceProxy(DiscoveryServiceManager serviceManager, int maxDegreeOfParallelism) : base(
-            serviceManager, maxDegreeOfParallelism)
-        {
-        }
-
-        #endregion
-
-        #region Multi-threaded IDiscoveryService Operations
-
-        #region IDiscoveryService.Execute()
-
-        /// <summary>
-        ///     Performs data parallelism on a keyed collection of type <see cref="DiscoveryRequest" /> to execute
-        ///     <see cref="IDiscoveryService" />.Execute() requests concurrently
-        /// </summary>
-        /// <param name="requests">The keyed collection requests to be submitted</param>
-        /// <param name="errorHandler">
-        ///     An optional error handling operation. Handler will be passed the request that failed along
-        ///     with the corresponding <see cref="FaultException{OrganizationServiceFault}" />
-        /// </param>
-        /// <returns>
-        ///     A keyed collection of type <see cref="DiscoveryResponse" /> containing response to the
-        ///     <see cref="DiscoveryRequest" />
-        /// </returns>
-        /// <exception cref="AggregateException">
-        ///     callers should catch <see cref="AggregateException" /> to handle exceptions raised
-        ///     by individual requests
-        /// </exception>
-        public IDictionary<string, DiscoveryResponse> Execute(IDictionary<string, DiscoveryRequest> requests,
-            Action<KeyValuePair<string, DiscoveryRequest>, FaultException<DiscoveryServiceFault>> errorHandler = null)
-        {
-            return Execute(requests, new DiscoveryServiceProxyOptions(), errorHandler);
-        }
-
-        /// <summary>
-        ///     Performs data parallelism on a keyed collection of type <see cref="DiscoveryRequest" /> to execute
-        ///     <see cref="IDiscoveryService" />.Execute() requests concurrently
-        /// </summary>
-        /// <param name="requests">The keyed collection of requests to be submitted</param>
-        /// <param name="options">The configurable options for the parallel <see cref="DiscoveryServiceProxy" /> requests</param>
-        /// <param name="errorHandler">
-        ///     An optional error handling operation. Handler will be passed the request that failed along
-        ///     with the corresponding <see cref="FaultException{OrganizationServiceFault}" />
-        /// </param>
-        /// <returns>
-        ///     A keyed collection of type <see cref="DiscoveryResponse" /> containing response to the
-        ///     <see cref="DiscoveryRequest" />
-        /// </returns>
-        /// <exception cref="AggregateException">
-        ///     callers should catch <see cref="AggregateException" /> to handle exceptions raised
-        ///     by individual requests
-        /// </exception>
-        public IDictionary<string, DiscoveryResponse> Execute(IDictionary<string, DiscoveryRequest> requests,
-            DiscoveryServiceProxyOptions options,
-            Action<KeyValuePair<string, DiscoveryRequest>, FaultException<DiscoveryServiceFault>> errorHandler = null)
-        {
-            return ExecuteOperationWithResponse<KeyValuePair<string, DiscoveryRequest>,
-                KeyValuePair<string, DiscoveryResponse>>(requests, options, (request, context) =>
-            {
-                var response = context.Local.Execute(request.Value);
-
-                //Collect the result from each iteration in this partition
-                context.Results.Add(new KeyValuePair<string, DiscoveryResponse>(request.Key, response));
-            }, errorHandler).ToDictionary(r => r.Key, r => r.Value);
-        }
-
-        /// <summary>
-        ///     Performs data parallelism on a keyed collection of type TRequest to execute <see cref="IDiscoveryService" />
-        ///     .Execute() requests concurrently
-        /// </summary>
-        /// <typeparam name="TRequest">The request type that derives from <see cref="DiscoveryRequest" /></typeparam>
-        /// <typeparam name="TResponse">The response type that derives from <see cref="DiscoveryResponse" /></typeparam>
-        /// <param name="requests">The keyed collection of requests to be executed</param>
-        /// <param name="errorHandler">
-        ///     An optional error handling operation. Handler will be passed the request that failed along
-        ///     with the corresponding <see cref="FaultException{OrganizationServiceFault}" />
-        /// </param>
-        /// <returns>A keyed collection of type TResponse containing the responses to each executed request</returns>
-        /// <exception cref="AggregateException">
-        ///     callers should catch <see cref="AggregateException" /> to handle exceptions raised
-        ///     by individual requests
-        /// </exception>
-        public IDictionary<string, TResponse> Execute<TRequest, TResponse>(IDictionary<string, TRequest> requests,
-            Action<KeyValuePair<string, TRequest>, FaultException<DiscoveryServiceFault>> errorHandler = null)
-            where TRequest : DiscoveryRequest where TResponse : DiscoveryResponse
-        {
-            return Execute<TRequest, TResponse>(requests, new DiscoveryServiceProxyOptions(), errorHandler);
-        }
-
-        /// <summary>
-        ///     Performs data parallelism on a keyed collection of type TRequest to execute <see cref="IDiscoveryService" />
-        ///     .Execute() requests concurrently
-        /// </summary>
-        /// <typeparam name="TRequest">The request type that derives from <see cref="DiscoveryRequest" /></typeparam>
-        /// <typeparam name="TResponse">The response type that derives from <see cref="DiscoveryResponse" /></typeparam>
-        /// <param name="requests">The keyed collection of requests to be executed</param>
-        /// <param name="options">The configurable options for the parallel <see cref="DiscoveryServiceProxy" /> requests</param>
-        /// <param name="errorHandler">
-        ///     An optional error handling operation. Handler will be passed the request that failed along
-        ///     with the corresponding <see cref="FaultException{OrganizationServiceFault}" />
-        /// </param>
-        /// <returns>A keyed collection of type TResponse containing the responses to each executed request</returns>
-        /// <exception cref="AggregateException">
-        ///     callers should catch <see cref="AggregateException" /> to handle exceptions raised
-        ///     by individual requests
-        /// </exception>
-        public IDictionary<string, TResponse> Execute<TRequest, TResponse>(IDictionary<string, TRequest> requests,
-            DiscoveryServiceProxyOptions options,
-            Action<KeyValuePair<string, TRequest>, FaultException<DiscoveryServiceFault>> errorHandler = null)
-            where TRequest : DiscoveryRequest where TResponse : DiscoveryResponse
-        {
-            return ExecuteOperationWithResponse<KeyValuePair<string, TRequest>, KeyValuePair<string, TResponse>>(
-                requests, options, (request, context) =>
-                {
-                    var response = (TResponse) context.Local.Execute(request.Value);
-
-                    context.Results.Add(new KeyValuePair<string, TResponse>(request.Key, response));
-                }, errorHandler).ToDictionary(r => r.Key, r => r.Value);
-        }
-
-        /// <summary>
-        ///     Performs data parallelism on a collection of type <see cref="DiscoveryRequest" /> to execute
-        ///     <see cref="IDiscoveryService" />.Execute() requests concurrently
-        /// </summary>
-        /// <param name="requests">The requests to be submitted</param>
-        /// <param name="errorHandler">
-        ///     An optional error handling operation. Handler will be passed the request that failed along
-        ///     with the corresponding <see cref="FaultException{OrganizationServiceFault}" />
-        /// </param>
-        /// <returns>
-        ///     A collection of type <see cref="DiscoveryResponse" /> containing response to the
-        ///     <see cref="DiscoveryRequest" />
-        /// </returns>
-        /// <exception cref="AggregateException">
-        ///     callers should catch <see cref="AggregateException" /> to handle exceptions raised
-        ///     by individual requests
-        /// </exception>
-        public IEnumerable<DiscoveryResponse> Execute(IEnumerable<DiscoveryRequest> requests,
-            Action<DiscoveryRequest, FaultException<DiscoveryServiceFault>> errorHandler = null)
-        {
-            return Execute(requests, new DiscoveryServiceProxyOptions(), errorHandler);
-        }
-
-        /// <summary>
-        ///     Performs data parallelism on a collection of type <see cref="DiscoveryRequest" /> to execute
-        ///     <see cref="IDiscoveryService" />.Execute() requests concurrently
-        /// </summary>
-        /// <param name="requests">The requests to be submitted</param>
-        /// <param name="options">The configurable options for the parallel <see cref="DiscoveryServiceProxy" /> requests</param>
-        /// <param name="errorHandler">
-        ///     An optional error handling operation. Handler will be passed the request that failed along
-        ///     with the corresponding <see cref="FaultException{OrganizationServiceFault}" />
-        /// </param>
-        /// <returns>
-        ///     A collection of type <see cref="DiscoveryResponse" /> containing response to the
-        ///     <see cref="DiscoveryRequest" />
-        /// </returns>
-        /// <exception cref="AggregateException">
-        ///     callers should catch <see cref="AggregateException" /> to handle exceptions raised
-        ///     by individual requests
-        /// </exception>
-        public IEnumerable<DiscoveryResponse> Execute(IEnumerable<DiscoveryRequest> requests,
-            DiscoveryServiceProxyOptions options,
-            Action<DiscoveryRequest, FaultException<DiscoveryServiceFault>> errorHandler = null)
-        {
-            return ExecuteOperationWithResponse<DiscoveryRequest, DiscoveryResponse>(requests, options,
-                (request, context) =>
-                {
-                    var response = context.Local.Execute(request);
-
-                    //Collect the result from each iteration in this partition
-                    context.Results.Add(response);
-                }, errorHandler);
-        }
-
-        /// <summary>
-        ///     Performs data parallelism on a collection of type TRequest to execute <see cref="IDiscoveryService" />.Execute()
-        ///     requests concurrently
-        /// </summary>
-        /// <typeparam name="TRequest">The request type that derives from <see cref="DiscoveryRequest" /></typeparam>
-        /// <typeparam name="TResponse">The response type that derives from <see cref="DiscoveryResponse" /></typeparam>
-        /// <param name="requests">The requests to be executed</param>
-        /// <param name="errorHandler">
-        ///     An optional error handling operation. Handler will be passed the request that failed along
-        ///     with the corresponding <see cref="FaultException{OrganizationServiceFault}" />
-        /// </param>
-        /// <returns>A collection of type TResponse containing the responses to each executed request</returns>
-        /// <exception cref="AggregateException">
-        ///     callers should catch <see cref="AggregateException" /> to handle exceptions raised
-        ///     by individual requests
-        /// </exception>
-        public IEnumerable<TResponse> Execute<TRequest, TResponse>(IEnumerable<TRequest> requests,
-            Action<TRequest, FaultException<DiscoveryServiceFault>> errorHandler = null)
-            where TRequest : DiscoveryRequest where TResponse : DiscoveryResponse
-        {
-            return Execute<TRequest, TResponse>(requests, new DiscoveryServiceProxyOptions(), errorHandler);
-        }
-
-        /// <summary>
-        ///     Performs data parallelism on a collection of type TRequest to execute <see cref="IDiscoveryService" />.Execute()
-        ///     requests concurrently
-        /// </summary>
-        /// <typeparam name="TRequest">The request type that derives from <see cref="DiscoveryRequest" /></typeparam>
-        /// <typeparam name="TResponse">The response type that derives from <see cref="DiscoveryResponse" /></typeparam>
-        /// <param name="requests">The requests to be executed</param>
-        /// <param name="options">The configurable options for the parallel <see cref="DiscoveryServiceProxy" /> requests</param>
-        /// <param name="errorHandler">
-        ///     An optional error handling operation. Handler will be passed the request that failed along
-        ///     with the corresponding <see cref="FaultException{OrganizationServiceFault}" />
-        /// </param>
-        /// <returns>A collection of type TResponse containing the responses to each executed request</returns>
-        /// <exception cref="AggregateException">
-        ///     callers should catch <see cref="AggregateException" /> to handle exceptions raised
-        ///     by individual requests
-        /// </exception>
-        public IEnumerable<TResponse> Execute<TRequest, TResponse>(IEnumerable<TRequest> requests,
-            DiscoveryServiceProxyOptions options,
-            Action<TRequest, FaultException<DiscoveryServiceFault>> errorHandler = null)
-            where TRequest : DiscoveryRequest where TResponse : DiscoveryResponse
-        {
-            return ExecuteOperationWithResponse<TRequest, TResponse>(requests, options, (request, context) =>
-            {
-                var response = (TResponse) context.Local.Execute(request);
-
-                context.Results.Add(response);
-            }, errorHandler);
-        }
-
-        #endregion
-
-        #endregion
     }
 
     /// <summary>
-    ///     Class for executing concurrent <see cref="IOrganizationService" /> operations
+    /// Class for executing concurrent <see cref="IOrganizationService"/> operations
     /// </summary>
     /// <remarks>
-    ///     During parallel operations, <see cref="OrganizationServiceProxy" /> instances are aligned with individual data
-    ///     partitions
-    ///     using a thread local class variable to avoid service channel thread-safety issues.
+    /// During parallel operations, <see cref="OrganizationServiceProxy"/> instances are aligned with individual data partitions
+    /// using a thread local class variable to avoid service channel thread-safety issues.
     /// </remarks>
     public class ParallelOrganizationServiceProxy : ParallelServiceProxy<OrganizationServiceManager>
     {
-        #region Properties
+        #region Constructor(s)
 
-        private bool shouldEnableProxyTypesBehavior { get; set; }
+        public ParallelOrganizationServiceProxy(OrganizationServiceManager serviceManager)
+            : base(serviceManager) {  }
+
+        public ParallelOrganizationServiceProxy(OrganizationServiceManager serviceManager, int maxDegreeOfParallelism)
+            : base(serviceManager, maxDegreeOfParallelism) {  }
 
         #endregion
 
-        #region Constructor(s)
+        #region Properties
 
-        public ParallelOrganizationServiceProxy(OrganizationServiceManager serviceManager) : 
-            base(serviceManager)
-        {
-        }
-
-        public ParallelOrganizationServiceProxy(OrganizationServiceManager serviceManager, int maxDegreeOfParallelism) : 
-            base(serviceManager, maxDegreeOfParallelism)
-        {
-        }
-
-
+        private bool shouldEnableProxyTypesBehavior { get; set; }
 
         #endregion
 
@@ -395,123 +325,88 @@ namespace Microsoft.Pfe.Xrm
         #region IOrganizationService.Create()
 
         /// <summary>
-        ///     Performs data parallelism on a keyed collection of type <see cref="Entity" /> to execute
-        ///     <see cref="IOrganizationService" />.Create() requests concurrently
+        /// Performs data parallelism on a keyed collection of type <see cref="Entity"/> to execute <see cref="IOrganizationService"/>.Create() requests concurrently
         /// </summary>
         /// <param name="targets">The keyed collection target entities to be created</param>
-        /// <param name="errorHandler">
-        ///     An optional error handling operation. Handler will be passed the request that failed along
-        ///     with the corresponding <see cref="FaultException{OrganizationServiceFault}" />
-        /// </param>
-        /// <returns>A keyed collection of unique identifiers for each created <see cref="Entity" /></returns>
-        /// <exception cref="AggregateException">
-        ///     callers should catch <see cref="AggregateException" /> to handle exceptions raised
-        ///     by individual requests
-        /// </exception>
+        /// <param name="errorHandler">An optional error handling operation. Handler will be passed the request that failed along with the corresponding <see cref="FaultException{OrganizationServiceFault}"/></param>        
+        /// <returns>A keyed collection of unique identifiers for each created <see cref="Entity"/></returns>
+        /// <exception cref="AggregateException">callers should catch <see cref="AggregateException"/> to handle exceptions raised by individual requests</exception>
         /// <remarks>
-        ///     Only returning generated unique identifier because it's assumed that requesting process will maintain a reference
-        ///     between key and the <see cref="Entity" /> instance submitted as the Create target to which the unique identifier
-        ///     can be correlated
+        /// Only returning generated unique identifier because it's assumed that requesting process will maintain a reference
+        /// between key and the <see cref="Entity"/> instance submitted as the Create target to which the unique identifier can be correlated
         /// </remarks>
-        public IDictionary<string, Guid> Create(IDictionary<string, Entity> targets,
-            Action<KeyValuePair<string, Entity>, FaultException<OrganizationServiceFault>> errorHandler = null)
+        public IDictionary<string, Guid> Create(IDictionary<string, Entity> targets, Action<KeyValuePair<string, Entity>, FaultException<OrganizationServiceFault>> errorHandler = null)
         {
-            return Create(targets, new OrganizationServiceProxyOptions(), errorHandler);
+            return this.Create(targets, new OrganizationServiceProxyOptions(), errorHandler);
         }
 
         /// <summary>
-        ///     Performs data parallelism on a keyed collection of type <see cref="Entity" /> to execute
-        ///     <see cref="IOrganizationService" />.Create() requests concurrently
+        /// Performs data parallelism on a keyed collection of type <see cref="Entity"/> to execute <see cref="IOrganizationService"/>.Create() requests concurrently
         /// </summary>
         /// <param name="targets">The keyed collection target entities to be created</param>
-        /// <param name="options">The configurable options for the parallel <see cref="OrganizationServiceProxy" /> requests</param>
-        /// <param name="errorHandler">
-        ///     An optional error handling operation. Handler will be passed the request that failed along
-        ///     with the corresponding <see cref="FaultException{OrganizationServiceFault}" />
-        /// </param>
-        /// <returns>A keyed collection of unique identifiers for each created <see cref="Entity" /></returns>
-        /// <exception cref="AggregateException">
-        ///     callers should catch <see cref="AggregateException" /> to handle exceptions raised
-        ///     by individual requests
-        /// </exception>
+        /// <param name="options">The configurable options for the parallel <see cref="OrganizationServiceProxy"/> requests</param>
+        /// <param name="errorHandler">An optional error handling operation. Handler will be passed the request that failed along with the corresponding <see cref="FaultException{OrganizationServiceFault}"/></param>        
+        /// <returns>A keyed collection of unique identifiers for each created <see cref="Entity"/></returns>
+        /// <exception cref="AggregateException">callers should catch <see cref="AggregateException"/> to handle exceptions raised by individual requests</exception>
         /// <remarks>
-        ///     Only returning generated unique identifier because it's assumed that requesting process will maintain a reference
-        ///     between key and the <see cref="Entity" /> instance submitted as the Create target to which the unique identifier
-        ///     can be correlated
+        /// Only returning generated unique identifier because it's assumed that requesting process will maintain a reference
+        /// between key and the <see cref="Entity"/> instance submitted as the Create target to which the unique identifier can be correlated
         /// </remarks>
-        public IDictionary<string, Guid> Create(IDictionary<string, Entity> targets,
-            OrganizationServiceProxyOptions options,
-            Action<KeyValuePair<string, Entity>, FaultException<OrganizationServiceFault>> errorHandler = null)
+        public IDictionary<string, Guid> Create(IDictionary<string, Entity> targets, OrganizationServiceProxyOptions options, Action<KeyValuePair<string, Entity>, FaultException<OrganizationServiceFault>> errorHandler = null)
         {
-            return ExecuteOperationWithResponse<KeyValuePair<string, Entity>, KeyValuePair<string, Guid>>(targets,
-                options, (target, context) =>
+            return this.ExecuteOperationWithResponse<KeyValuePair<string, Entity>, KeyValuePair<string, Guid>>(targets, options,
+                (target, context) =>
                 {
-                    var id = context.Local.Create(target.Value); //Hydrate target with response Id
+                    Guid id = context.Local.Create(target.Value); //Hydrate target with response Id
 
                     //Collect the result from each iteration in this partition
                     context.Results.Add(new KeyValuePair<string, Guid>(target.Key, id));
-                }, errorHandler).ToDictionary(t => t.Key, t => t.Value);
+                },
+                errorHandler)
+                .ToDictionary(t => t.Key, t => t.Value);
         }
 
         /// <summary>
-        ///     Performs data parallelism on a collection of type <see cref="Entity" /> to execute
-        ///     <see cref="IOrganizationService" />.Create() requests concurrently
+        /// Performs data parallelism on a collection of type <see cref="Entity"/> to execute <see cref="IOrganizationService"/>.Create() requests concurrently
         /// </summary>
         /// <param name="targets">The target entities to be created</param>
-        /// <param name="errorHandler">
-        ///     An optional error handling operation. Handler will be passed the request that failed along
-        ///     with the corresponding <see cref="FaultException{OrganizationServiceFault}" />
-        /// </param>
-        /// <returns>The collection of created <see cref="Entity" /> records, hydrated with the response Id</returns>
-        /// <exception cref="AggregateException">
-        ///     callers should catch <see cref="AggregateException" /> to handle exceptions raised
-        ///     by individual requests
-        /// </exception>
+        /// <param name="errorHandler">An optional error handling operation. Handler will be passed the request that failed along with the corresponding <see cref="FaultException{OrganizationServiceFault}"/></param>        
+        /// <returns>The collection of created <see cref="Entity"/> records, hydrated with the response Id</returns>
+        /// <exception cref="AggregateException">callers should catch <see cref="AggregateException"/> to handle exceptions raised by individual requests</exception>
         /// <remarks>
-        ///     By returning the original collection of target entities with Ids, this allows for concurrent creation of multiple
-        ///     entity types
-        ///     and ability to cross-reference submitted data with the plaftorm generated Id.  Note that subsequent Update requests
-        ///     should
-        ///     always instantiate a new <see cref="Entity" /> instance and assign the Id.
+        /// By returning the original collection of target entities with Ids, this allows for concurrent creation of multiple entity types
+        /// and ability to cross-reference submitted data with the plaftorm generated Id.  Note that subsequent Update requests should
+        /// always instantiate a new <see cref="Entity"/> instance and assign the Id.
         /// </remarks>
-        public IEnumerable<Entity> Create(IEnumerable<Entity> targets,
-            Action<Entity, FaultException<OrganizationServiceFault>> errorHandler = null)
+        public IEnumerable<Entity> Create(IEnumerable<Entity> targets, Action<Entity, FaultException<OrganizationServiceFault>> errorHandler = null)
         {
-            return Create(targets, new OrganizationServiceProxyOptions(), errorHandler);
+            return this.Create(targets, new OrganizationServiceProxyOptions(), errorHandler);
         }
 
         /// <summary>
-        ///     Performs data parallelism on a collection of type <see cref="Entity" /> to execute
-        ///     <see cref="IOrganizationService" />.Create() requests concurrently
+        /// Performs data parallelism on a collection of type <see cref="Entity"/> to execute <see cref="IOrganizationService"/>.Create() requests concurrently
         /// </summary>
         /// <param name="targets">The target entities to be created</param>
-        /// <param name="options">The configurable options for the parallel <see cref="OrganizationServiceProxy" /> requests</param>
-        /// <param name="errorHandler">
-        ///     An optional error handling operation. Handler will be passed the request that failed along
-        ///     with the corresponding <see cref="FaultException{OrganizationServiceFault}" />
-        /// </param>
-        /// <returns>The collection of created <see cref="Entity" /> records, hydrated with the response Id</returns>
-        /// <exception cref="AggregateException">
-        ///     callers should catch <see cref="AggregateException" /> to handle exceptions raised
-        ///     by individual requests
-        /// </exception>
+        /// <param name="options">The configurable options for the parallel <see cref="OrganizationServiceProxy"/> requests</param>
+        /// <param name="errorHandler">An optional error handling operation. Handler will be passed the request that failed along with the corresponding <see cref="FaultException{OrganizationServiceFault}"/></param>        
+        /// <returns>The collection of created <see cref="Entity"/> records, hydrated with the response Id</returns>
+        /// <exception cref="AggregateException">callers should catch <see cref="AggregateException"/> to handle exceptions raised by individual requests</exception>
         /// <remarks>
-        ///     By returning the original collection of target entities with Ids, this allows for concurrent creation of multiple
-        ///     entity types
-        ///     and ability to cross-reference submitted data with the plaftorm generated Id.  Note that subsequent Update requests
-        ///     should
-        ///     always instantiate a new <see cref="Entity" /> instance and assign the Id.
+        /// By returning the original collection of target entities with Ids, this allows for concurrent creation of multiple entity types
+        /// and ability to cross-reference submitted data with the plaftorm generated Id.  Note that subsequent Update requests should
+        /// always instantiate a new <see cref="Entity"/> instance and assign the Id.
         /// </remarks>
-        public IEnumerable<Entity> Create(IEnumerable<Entity> targets, OrganizationServiceProxyOptions options,
-            Action<Entity, FaultException<OrganizationServiceFault>> errorHandler = null)
+        public IEnumerable<Entity> Create(IEnumerable<Entity> targets, OrganizationServiceProxyOptions options, Action<Entity, FaultException<OrganizationServiceFault>> errorHandler = null)
         {
-            return ExecuteOperationWithResponse<Entity, Entity>(targets, options, (target, context) =>
-            {
-                target.Id = context.Local.Create(target); //Hydrate target with response Id
-
-                //Collect the result from each iteration in this partition
-                context.Results.Add(target);
-            }, errorHandler);
+            return this.ExecuteOperationWithResponse<Entity, Entity>(targets, options,
+                (target, context) =>
+                {                   
+                    target.Id = context.Local.Create(target); //Hydrate target with response Id
+                    
+                    //Collect the result from each iteration in this partition
+                    context.Results.Add(target);
+                },
+                errorHandler);
         }
 
         #endregion
@@ -519,42 +414,31 @@ namespace Microsoft.Pfe.Xrm
         #region IOrganizationService.Update()
 
         /// <summary>
-        ///     Performs data parallelism on a list of type <see cref="Entity" /> to execute <see cref="IOrganizationService" />
-        ///     .Update() requests concurrently
+        /// Performs data parallelism on a list of type <see cref="Entity"/> to execute <see cref="IOrganizationService"/>.Update() requests concurrently
         /// </summary>
         /// <param name="targets">The target entities to be updated</param>
-        /// <param name="errorHandler">
-        ///     An optional error handling operation. Handler will be passed the request that failed along
-        ///     with the corresponding <see cref="FaultException{OrganizationServiceFault}" />
-        /// </param>
-        /// <exception cref="AggregateException">
-        ///     callers should catch <see cref="AggregateException" /> to handle exceptions raised
-        ///     by individual requests
-        /// </exception>
-        public void Update(IEnumerable<Entity> targets,
-            Action<Entity, FaultException<OrganizationServiceFault>> errorHandler = null)
+        /// <param name="errorHandler">An optional error handling operation. Handler will be passed the request that failed along with the corresponding <see cref="FaultException{OrganizationServiceFault}"/></param>
+        /// <exception cref="AggregateException">callers should catch <see cref="AggregateException"/> to handle exceptions raised by individual requests</exception>
+        public void Update(IEnumerable<Entity> targets, Action<Entity, FaultException<OrganizationServiceFault>> errorHandler = null)
         {
-            Update(targets, new OrganizationServiceProxyOptions(), errorHandler);
+            this.Update(targets, new OrganizationServiceProxyOptions(), errorHandler);
         }
 
         /// <summary>
-        ///     Performs data parallelism on a list of type <see cref="Entity" /> to execute <see cref="IOrganizationService" />
-        ///     .Update() requests concurrently
+        /// Performs data parallelism on a list of type <see cref="Entity"/> to execute <see cref="IOrganizationService"/>.Update() requests concurrently
         /// </summary>
         /// <param name="targets">The target entities to be updated</param>
-        /// <param name="options">The configurable options for the parallel <see cref="OrganizationServiceProxy" /> requests</param>
-        /// <param name="errorHandler">
-        ///     An optional error handling operation. Handler will be passed the request that failed along
-        ///     with the corresponding <see cref="FaultException{OrganizationServiceFault}" />
-        /// </param>
-        /// <exception cref="AggregateException">
-        ///     callers should catch <see cref="AggregateException" /> to handle exceptions raised
-        ///     by individual requests
-        /// </exception>
-        public void Update(IEnumerable<Entity> targets, OrganizationServiceProxyOptions options,
-            Action<Entity, FaultException<OrganizationServiceFault>> errorHandler = null)
+        /// <param name="options">The configurable options for the parallel <see cref="OrganizationServiceProxy"/> requests</param>
+        /// <param name="errorHandler">An optional error handling operation. Handler will be passed the request that failed along with the corresponding <see cref="FaultException{OrganizationServiceFault}"/></param>
+        /// <exception cref="AggregateException">callers should catch <see cref="AggregateException"/> to handle exceptions raised by individual requests</exception>
+        public void Update(IEnumerable<Entity> targets, OrganizationServiceProxyOptions options, Action<Entity, FaultException<OrganizationServiceFault>> errorHandler = null)
         {
-            ExecuteOperation(targets, options, (target, proxy) => { proxy.Update(target); }, errorHandler);
+            this.ExecuteOperation<Entity>(targets, options,
+                (target, proxy) =>
+                {
+                    proxy.Update(target);
+                },
+                errorHandler);
         }
 
         #endregion
@@ -562,42 +446,30 @@ namespace Microsoft.Pfe.Xrm
         #region IOrganizationService.Delete()
 
         /// <summary>
-        ///     Performs data parallelism on a list of type <see cref="EntityReference" /> to execute
-        ///     <see cref="IOrganizationService" />.Delete() requests concurrently
+        /// Performs data parallelism on a list of type <see cref="EntityReference"/> to execute <see cref="IOrganizationService"/>.Delete() requests concurrently
         /// </summary>
         /// <param name="targets">The target entities to be updated</param>
-        /// <param name="errorHandler">
-        ///     An optional error handling operation. Handler will be passed the request that failed along
-        ///     with the corresponding <see cref="FaultException{OrganizationServiceFault}" />
-        /// </param>
-        /// <exception cref="AggregateException">
-        ///     callers should catch <see cref="AggregateException" /> to handle exceptions raised
-        ///     by individual requests
-        /// </exception>
-        public void Delete(IEnumerable<EntityReference> targets,
-            Action<EntityReference, FaultException<OrganizationServiceFault>> errorHandler = null)
+        /// <param name="errorHandler">An optional error handling operation. Handler will be passed the request that failed along with the corresponding <see cref="FaultException{OrganizationServiceFault}"/></param>
+        /// <exception cref="AggregateException">callers should catch <see cref="AggregateException"/> to handle exceptions raised by individual requests</exception>
+        public void Delete(IEnumerable<EntityReference> targets, Action<EntityReference, FaultException<OrganizationServiceFault>> errorHandler = null)
         {
-            Delete(targets, new OrganizationServiceProxyOptions(), errorHandler);
+            this.Delete(targets, new OrganizationServiceProxyOptions(), errorHandler);
         }
 
         /// <summary>
-        ///     Performs data parallelism on a list of type <see cref="EntityReference" /> to execute
-        ///     <see cref="IOrganizationService" />.Delete() requests concurrently
+        /// Performs data parallelism on a list of type <see cref="EntityReference"/> to execute <see cref="IOrganizationService"/>.Delete() requests concurrently
         /// </summary>
         /// <param name="targets">The target entities to be deleted</param>
-        /// <param name="options">The configurable options for the parallel <see cref="OrganizationServiceProxy" /> requests</param>
-        /// <param name="errorHandler">
-        ///     An optional error handling operation. Handler will be passed the request that failed along
-        ///     with the corresponding <see cref="FaultException{OrganizationServiceFault}" />
-        /// </param>
-        /// <exception cref="AggregateException">
-        ///     callers should catch <see cref="AggregateException" /> to handle exceptions raised
-        ///     by individual requests
-        /// </exception>
-        public void Delete(IEnumerable<EntityReference> targets, OrganizationServiceProxyOptions options,
-            Action<EntityReference, FaultException<OrganizationServiceFault>> errorHandler = null)
+        /// <param name="options">The configurable options for the parallel <see cref="OrganizationServiceProxy"/> requests</param>
+        /// <param name="errorHandler">An optional error handling operation. Handler will be passed the request that failed along with the corresponding <see cref="FaultException{OrganizationServiceFault}"/></param>
+        /// <exception cref="AggregateException">callers should catch <see cref="AggregateException"/> to handle exceptions raised by individual requests</exception>
+        public void Delete(IEnumerable<EntityReference> targets, OrganizationServiceProxyOptions options, Action<EntityReference, FaultException<OrganizationServiceFault>> errorHandler = null)
         {
-            ExecuteOperation(targets, options, (target, proxy) => { proxy.Delete(target.LogicalName, target.Id); },
+            this.ExecuteOperation<EntityReference>(targets, options,
+                (target, proxy) =>
+                {
+                    proxy.Delete(target.LogicalName, target.Id);
+                },
                 errorHandler);
         }
 
@@ -606,53 +478,31 @@ namespace Microsoft.Pfe.Xrm
         #region IOrganizationService.Associate()
 
         /// <summary>
-        ///     Performs data parallelism on a list of type <see cref="AssociateRequest" /> to execute
-        ///     <see cref="IOrganizationService" />.Associate() requests concurrently
+        /// Performs data parallelism on a list of type <see cref="AssociateRequest"/> to execute <see cref="IOrganizationService"/>.Associate() requests concurrently
         /// </summary>
-        /// <param name="requests">
-        ///     The <see cref="AssociateRequest" /> collection defining the entity, relationship, and entities
-        ///     to associate
-        /// </param>
-        /// <param name="errorHandler">
-        ///     An optional error handling operation. Handler will be passed the request that failed along
-        ///     with the corresponding <see cref="FaultException{OrganizationServiceFault}" />
-        /// </param>
-        /// <exception cref="AggregateException">
-        ///     callers should catch <see cref="AggregateException" /> to handle exceptions raised
-        ///     by individual requests
-        /// </exception>
-        public void Associate(IEnumerable<AssociateRequest> requests,
-            Action<AssociateRequest, FaultException<OrganizationServiceFault>> errorHandler = null)
+        /// <param name="requests">The <see cref="AssociateRequest"/> collection defining the entity, relationship, and entities to associate</param>
+        /// <param name="errorHandler">An optional error handling operation. Handler will be passed the request that failed along with the corresponding <see cref="FaultException{OrganizationServiceFault}"/></param>
+        /// <exception cref="AggregateException">callers should catch <see cref="AggregateException"/> to handle exceptions raised by individual requests</exception>
+        public void Associate(IEnumerable<AssociateRequest> requests, Action<AssociateRequest, FaultException<OrganizationServiceFault>> errorHandler = null)
         {
-            Associate(requests, new OrganizationServiceProxyOptions(), errorHandler);
+            this.Associate(requests, new OrganizationServiceProxyOptions(), errorHandler);
         }
 
         /// <summary>
-        ///     Performs data parallelism on a list of type <see cref="AssociateRequest" /> to execute
-        ///     <see cref="IOrganizationService" />.Associate() requests concurrently
+        /// Performs data parallelism on a list of type <see cref="AssociateRequest"/> to execute <see cref="IOrganizationService"/>.Associate() requests concurrently
         /// </summary>
-        /// <param name="requests">
-        ///     The <see cref="AssociateRequest" /> collection defining the entity, relationship, and entities
-        ///     to associate
-        /// </param>
+        /// <param name="requests">The <see cref="AssociateRequest"/> collection defining the entity, relationship, and entities to associate</param>
         /// <param name="options">The configurable options for the parallel OrganizationServiceProxy requests</param>
-        /// <param name="errorHandler">
-        ///     An optional error handling operation. Handler will be passed the request that failed along
-        ///     with the corresponding <see cref="FaultException{OrganizationServiceFault}" />
-        /// </param>
-        /// <exception cref="AggregateException">
-        ///     callers should catch <see cref="AggregateException" /> to handle exceptions raised
-        ///     by individual requests
-        /// </exception>
-        public void Associate(IEnumerable<AssociateRequest> requests, OrganizationServiceProxyOptions options,
-            Action<AssociateRequest, FaultException<OrganizationServiceFault>> errorHandler = null)
+        /// <param name="errorHandler">An optional error handling operation. Handler will be passed the request that failed along with the corresponding <see cref="FaultException{OrganizationServiceFault}"/></param>
+        /// <exception cref="AggregateException">callers should catch <see cref="AggregateException"/> to handle exceptions raised by individual requests</exception>
+        public void Associate(IEnumerable<AssociateRequest> requests, OrganizationServiceProxyOptions options, Action<AssociateRequest, FaultException<OrganizationServiceFault>> errorHandler = null)
         {
-            ExecuteOperation(requests, options,
+            this.ExecuteOperation<AssociateRequest>(requests, options,
                 (request, proxy) =>
                 {
-                    proxy.Associate(request.Target.LogicalName, request.Target.Id, request.Relationship,
-                        request.RelatedEntities);
-                }, errorHandler);
+                    proxy.Associate(request.Target.LogicalName, request.Target.Id, request.Relationship, request.RelatedEntities);
+                },
+                errorHandler);
         }
 
         #endregion
@@ -660,53 +510,31 @@ namespace Microsoft.Pfe.Xrm
         #region IOrganizationService.Disassociate()
 
         /// <summary>
-        ///     Performs data parallelism on a list of type <see cref="DisassociateRequest" /> to execute
-        ///     <see cref="IOrganizationService" />.Disassociate() requests concurrently
+        /// Performs data parallelism on a list of type <see cref="DisassociateRequest"/> to execute <see cref="IOrganizationService"/>.Disassociate() requests concurrently
         /// </summary>
-        /// <param name="requests">
-        ///     The <see cref="DisassociateRequest" /> collection defining the entity, relationship, and
-        ///     entities to disassociate
-        /// </param>
-        /// <param name="errorHandler">
-        ///     An optional error handling operation. Handler will be passed the request that failed along
-        ///     with the corresponding <see cref="FaultException{OrganizationServiceFault}" />
-        /// </param>
-        /// <exception cref="AggregateException">
-        ///     callers should catch <see cref="AggregateException" /> to handle exceptions raised
-        ///     by individual requests
-        /// </exception>
-        public void Disassociate(IEnumerable<DisassociateRequest> requests,
-            Action<DisassociateRequest, FaultException<OrganizationServiceFault>> errorHandler = null)
-        {
-            Disassociate(requests, new OrganizationServiceProxyOptions(), errorHandler);
+        /// <param name="requests">The <see cref="DisassociateRequest"/> collection defining the entity, relationship, and entities to disassociate</param>
+        /// <param name="errorHandler">An optional error handling operation. Handler will be passed the request that failed along with the corresponding <see cref="FaultException{OrganizationServiceFault}"/></param>
+        /// <exception cref="AggregateException">callers should catch <see cref="AggregateException"/> to handle exceptions raised by individual requests</exception>
+        public void Disassociate(IEnumerable<DisassociateRequest> requests, Action<DisassociateRequest, FaultException<OrganizationServiceFault>> errorHandler = null)
+        {         
+            this.Disassociate(requests, new OrganizationServiceProxyOptions(), errorHandler);
         }
 
         /// <summary>
-        ///     Performs data parallelism on a list of type <see cref="DisassociateRequest" /> to execute
-        ///     <see cref="IOrganizationService" />.Disassociate() requests concurrently
+        /// Performs data parallelism on a list of type <see cref="DisassociateRequest"/> to execute <see cref="IOrganizationService"/>.Disassociate() requests concurrently
         /// </summary>
-        /// <param name="requests">
-        ///     The <see cref="DisassociateRequest" /> collection defining the entity, relationship, and
-        ///     entities to disassociate
-        /// </param>
-        /// <param name="options">The configurable options for the parallel <see cref="OrganizationServiceProxy" /> requests</param>
-        /// <param name="errorHandler">
-        ///     An optional error handling operation. Handler will be passed the request that failed along
-        ///     with the corresponding <see cref="FaultException{OrganizationServiceFault}" />
-        /// </param>
-        /// <exception cref="AggregateException">
-        ///     callers should catch <see cref="AggregateException" /> to handle exceptions raised
-        ///     by individual requests
-        /// </exception>
-        public void Disassociate(IEnumerable<DisassociateRequest> requests, OrganizationServiceProxyOptions options,
-            Action<DisassociateRequest, FaultException<OrganizationServiceFault>> errorHandler = null)
+        /// <param name="requests">The <see cref="DisassociateRequest"/> collection defining the entity, relationship, and entities to disassociate</param>
+        /// <param name="options">The configurable options for the parallel <see cref="OrganizationServiceProxy"/> requests</param>
+        /// <param name="errorHandler">An optional error handling operation. Handler will be passed the request that failed along with the corresponding <see cref="FaultException{OrganizationServiceFault}"/></param>
+        /// <exception cref="AggregateException">callers should catch <see cref="AggregateException"/> to handle exceptions raised by individual requests</exception>
+        public void Disassociate(IEnumerable<DisassociateRequest> requests, OrganizationServiceProxyOptions options, Action<DisassociateRequest, FaultException<OrganizationServiceFault>> errorHandler = null)
         {
-            ExecuteOperation(requests, options,
+            this.ExecuteOperation<DisassociateRequest>(requests, options,
                 (request, proxy) =>
                 {
-                    proxy.Disassociate(request.Target.LogicalName, request.Target.Id, request.Relationship,
-                        request.RelatedEntities);
-                }, errorHandler);
+                    proxy.Disassociate(request.Target.LogicalName, request.Target.Id, request.Relationship, request.RelatedEntities);
+                },
+                errorHandler);
         }
 
         #endregion
@@ -714,223 +542,127 @@ namespace Microsoft.Pfe.Xrm
         #region IOrganizationService.Retrieve()
 
         /// <summary>
-        ///     Performs data parallelism on a collection of type <see cref="RetrieveRequest" /> to execute
-        ///     <see cref="IOrganizationService" />.Retrieve() requests concurrently
+        /// Performs data parallelism on a collection of type <see cref="RetrieveRequest"/> to execute <see cref="IOrganizationService"/>.Retrieve() requests concurrently
         /// </summary>
-        /// <param name="requests">The <see cref="RetrieveRequest" /> collection defining the entities to be retrieved</param>
-        /// <param name="errorHandler">
-        ///     An optional error handling operation. Handler will be passed the request that failed along
-        ///     with the corresponding <see cref="FaultException{OrganizationServiceFault}" />
-        /// </param>
-        /// <returns>A collection of type <see cref="Entity" /> containing the retrieved entities</returns>
+        /// <param name="requests">The <see cref="RetrieveRequest"/> collection defining the entities to be retrieved</param>
+        /// <param name="slidingExpiration">The cache sliding expiration (If an ICachesStragegy Chosen <see cref="CacheStrategies"/>)</param>
+        /// <param name="errorHandler">An optional error handling operation. Handler will be passed the request that failed along with the corresponding <see cref="FaultException{OrganizationServiceFault}"/></param>
+        /// <returns>A collection of type <see cref="Entity"/> containing the retrieved entities</returns>
         /// <remarks>
-        ///     IMPORTANT!! RetrieveMultiple is the favored approach for retrieving multiple entities of the same type
-        ///     This approach should only be used if trying to retrieve multiple individual records of varying entity types.
+        /// IMPORTANT!! RetrieveMultiple is the favored approach for retrieving multiple entities of the same type
+        /// This approach should only be used if trying to retrieve multiple individual records of varying entity types.
         /// </remarks>
-        /// <exception cref="AggregateException">
-        ///     callers should catch <see cref="AggregateException" /> to handle exceptions raised
-        ///     by individual requests
-        /// </exception>
+        /// <exception cref="AggregateException">callers should catch <see cref="AggregateException"/> to handle exceptions raised by individual requests</exception>
+        public IEnumerable<Entity> Retrieve(IEnumerable<RetrieveRequest> requests, TimeSpan? slidingExpiration = null, 
+            Action<RetrieveRequest, FaultException<OrganizationServiceFault>> errorHandler = null)
+        {
+            return this.Retrieve(requests, new OrganizationServiceProxyOptions(), slidingExpiration, null, errorHandler);
+        }
+
+        /// <summary>
+        /// Performs data parallelism on a collection of type <see cref="RetrieveRequest"/> to execute <see cref="IOrganizationService"/>.Retrieve() requests concurrently
+        /// </summary>
+        /// <param name="requests">The <see cref="RetrieveRequest"/> collection defining the entities to be retrieved</param>
+        /// <param name="absoluteExpirationUtc">The cache absolute expiration in UTC (If an ICachesStragegy Chosen <see cref="CacheStrategies"/>)</param>
+        /// <param name="errorHandler">An optional error handling operation. Handler will be passed the request that failed along with the corresponding <see cref="FaultException{OrganizationServiceFault}"/></param>
+        /// <returns>A collection of type <see cref="Entity"/> containing the retrieved entities</returns>
+        /// <remarks>
+        /// IMPORTANT!! RetrieveMultiple is the favored approach for retrieving multiple entities of the same type
+        /// This approach should only be used if trying to retrieve multiple individual records of varying entity types.
+        /// </remarks>
+        /// <exception cref="AggregateException">callers should catch <see cref="AggregateException"/> to handle exceptions raised by individual requests</exception>
+        public IEnumerable<Entity> Retrieve(IEnumerable<RetrieveRequest> requests, DateTime? absoluteExpirationUtc = null, 
+            Action<RetrieveRequest, FaultException<OrganizationServiceFault>> errorHandler = null)
+        {
+            return this.Retrieve(requests, new OrganizationServiceProxyOptions(), null, absoluteExpirationUtc, errorHandler);
+        }
+
+        /// <summary>
+        /// Performs data parallelism on a collection of type <see cref="RetrieveRequest"/> to execute <see cref="IOrganizationService"/>.Retrieve() requests concurrently
+        /// </summary>
+        /// <param name="requests">The <see cref="RetrieveRequest"/> collection defining the entities to be retrieved</param>
+        /// <param name="options">The configurable options for the parallel <see cref="OrganizationServiceProxy"/> requests</param>
+        /// <param name="errorHandler">An optional error handling operation. Handler will be passed the request that failed along with the corresponding <see cref="FaultException{OrganizationServiceFault}"/></param>
+        /// <param name="slidingExpiration">The cache sliding expiration (If an ICachesStragegy Chosen <see cref="CacheStrategies"/>)</param>
+        /// <returns>A collection of type <see cref="Entity"/> containing the retrieved entities</returns>
+        /// <remarks>
+        /// IMPORTANT!! RetrieveMultiple is the favored approach for retrieving multiple entities of the same type
+        /// This approach should only be used if trying to retrieve multiple individual records of varying entity types.
+        /// </remarks>
+        /// <exception cref="AggregateException">callers should catch <see cref="AggregateException"/> to handle exceptions raised by individual requests</exception>
         public IEnumerable<Entity> Retrieve(IEnumerable<RetrieveRequest> requests,
-            Action<RetrieveRequest, FaultException<OrganizationServiceFault>> errorHandler = null)
-        {
-            return Retrieve(requests, new OrganizationServiceProxyOptions(), errorHandler);
-        }
-
-        /// <summary>
-        ///     Performs data parallelism on a collection of type <see cref="RetrieveRequest" /> to execute
-        ///     <see cref="IOrganizationService" />.Retrieve() requests concurrently
-        /// </summary>
-        /// <param name="requests">The <see cref="RetrieveRequest" /> collection defining the entities to be retrieved</param>
-        /// <param name="slidingExpiration">The cache sliding expiration</param>
-        /// <param name="errorHandler">
-        ///     An optional error handling operation. Handler will be passed the request that failed along
-        ///     with the corresponding <see cref="FaultException{OrganizationServiceFault}" />
-        /// </param>
-        /// <returns>A collection of type <see cref="Entity" /> containing the retrieved entities</returns>
-        /// <remarks>
-        ///     IMPORTANT!! RetrieveMultiple is the favored approach for retrieving multiple entities of the same type
-        ///     This approach should only be used if trying to retrieve multiple individual records of varying entity types.
-        /// </remarks>
-        /// <exception cref="AggregateException">
-        ///     callers should catch <see cref="AggregateException" /> to handle exceptions raised
-        ///     by individual requests
-        /// </exception>
-        public IEnumerable<Entity> Retrieve(IEnumerable<RetrieveRequest> requests, TimeSpan slidingExpiration,
-            Action<RetrieveRequest, FaultException<OrganizationServiceFault>> errorHandler = null)
-        {
-            return Retrieve(requests, new OrganizationServiceProxyOptions(), slidingExpiration, null, errorHandler);
-        }
-
-        /// <summary>
-        ///     Performs data parallelism on a collection of type <see cref="RetrieveRequest" /> to execute
-        ///     <see cref="IOrganizationService" />.Retrieve() requests concurrently
-        /// </summary>
-        /// <param name="requests">The <see cref="RetrieveRequest" /> collection defining the entities to be retrieved</param>
-        /// <param name="absoluteExpirationUtc">The cache absolute expiration (Should always be in UTC)</param>
-        /// <param name="errorHandler">
-        ///     An optional error handling operation. Handler will be passed the request that failed along
-        ///     with the corresponding <see cref="FaultException{OrganizationServiceFault}" />
-        /// </param>
-        /// <returns>A collection of type <see cref="Entity" /> containing the retrieved entities</returns>
-        /// <remarks>
-        ///     IMPORTANT!! RetrieveMultiple is the favored approach for retrieving multiple entities of the same type
-        ///     This approach should only be used if trying to retrieve multiple individual records of varying entity types.
-        /// </remarks>
-        /// <exception cref="AggregateException">
-        ///     callers should catch <see cref="AggregateException" /> to handle exceptions raised
-        ///     by individual requests
-        /// </exception>
-        public IEnumerable<Entity> Retrieve(IEnumerable<RetrieveRequest> requests, DateTime absoluteExpirationUtc,
-            Action<RetrieveRequest, FaultException<OrganizationServiceFault>> errorHandler = null)
-        {
-            return Retrieve(requests, new OrganizationServiceProxyOptions(), null, absoluteExpirationUtc, errorHandler);
-        }
-
-        /// <summary>
-        ///     Performs data parallelism on a collection of type <see cref="RetrieveRequest" /> to execute
-        ///     <see cref="IOrganizationService" />.Retrieve() requests concurrently
-        /// </summary>
-        /// <param name="requests">The <see cref="RetrieveRequest" /> collection defining the entities to be retrieved</param>
-        /// <param name="options">The configurable options for the parallel <see cref="OrganizationServiceProxy" /> requests</param>
-        /// <param name="errorHandler">
-        ///     An optional error handling operation. Handler will be passed the request that failed along
-        ///     with the corresponding <see cref="FaultException{OrganizationServiceFault}" />
-        /// </param>
-        /// <returns>A collection of type <see cref="Entity" /> containing the retrieved entities</returns>
-        /// <remarks>
-        ///     IMPORTANT!! RetrieveMultiple is the favored approach for retrieving multiple entities of the same type
-        ///     This approach should only be used if trying to retrieve multiple individual records of varying entity types.
-        /// </remarks>
-        /// <exception cref="AggregateException">
-        ///     callers should catch <see cref="AggregateException" /> to handle exceptions raised
-        ///     by individual requests
-        /// </exception>
-        public IEnumerable<Entity> Retrieve(IEnumerable<RetrieveRequest> requests,
-            OrganizationServiceProxyOptions options,
-            Action<RetrieveRequest, FaultException<OrganizationServiceFault>> errorHandler = null)
-        {
-            return Retrieve(requests, options, null, null, errorHandler);
-        }
-
-        /// <summary>
-        ///     Performs data parallelism on a collection of type <see cref="RetrieveRequest" /> to execute
-        ///     <see cref="IOrganizationService" />.Retrieve() requests concurrently
-        /// </summary>
-        /// <param name="requests">The <see cref="RetrieveRequest" /> collection defining the entities to be retrieved</param>
-        /// <param name="options">The configurable options for the parallel <see cref="OrganizationServiceProxy" /> requests</param>
-        /// <param name="slidingExpiration">The cache sliding expiration</param>
-        /// <param name="errorHandler">
-        ///     An optional error handling operation. Handler will be passed the request that failed along
-        ///     with the corresponding <see cref="FaultException{OrganizationServiceFault}" />
-        /// </param>
-        /// <returns>A collection of type <see cref="Entity" /> containing the retrieved entities</returns>
-        /// <remarks>
-        ///     IMPORTANT!! RetrieveMultiple is the favored approach for retrieving multiple entities of the same type
-        ///     This approach should only be used if trying to retrieve multiple individual records of varying entity types.
-        /// </remarks>
-        /// <exception cref="AggregateException">
-        ///     callers should catch <see cref="AggregateException" /> to handle exceptions raised
-        ///     by individual requests
-        /// </exception>
-        public IEnumerable<Entity> Retrieve(IEnumerable<RetrieveRequest> requests,
-            OrganizationServiceProxyOptions options, TimeSpan slidingExpiration,
-            Action<RetrieveRequest, FaultException<OrganizationServiceFault>> errorHandler = null)
-        {
-            return Retrieve(requests, options, slidingExpiration, null, errorHandler);
-        }
-
-        /// <summary>
-        ///     Performs data parallelism on a collection of type <see cref="RetrieveRequest" /> to execute
-        ///     <see cref="IOrganizationService" />.Retrieve() requests concurrently
-        /// </summary>
-        /// <param name="requests">The <see cref="RetrieveRequest" /> collection defining the entities to be retrieved</param>
-        /// <param name="options">The configurable options for the parallel <see cref="OrganizationServiceProxy" /> requests</param>
-        /// <param name="absoluteExpirationUtc">The cache absolute expiration (Should always be in UTC)</param>
-        /// <param name="errorHandler">
-        ///     An optional error handling operation. Handler will be passed the request that failed along
-        ///     with the corresponding <see cref="FaultException{OrganizationServiceFault}" />
-        /// </param>
-        /// <returns>A collection of type <see cref="Entity" /> containing the retrieved entities</returns>
-        /// <remarks>
-        ///     IMPORTANT!! RetrieveMultiple is the favored approach for retrieving multiple entities of the same type
-        ///     This approach should only be used if trying to retrieve multiple individual records of varying entity types.
-        /// </remarks>
-        /// <exception cref="AggregateException">
-        ///     callers should catch <see cref="AggregateException" /> to handle exceptions raised
-        ///     by individual requests
-        /// </exception>
-        public IEnumerable<Entity> Retrieve(IEnumerable<RetrieveRequest> requests,
-            OrganizationServiceProxyOptions options, DateTime absoluteExpirationUtc,
-            Action<RetrieveRequest, FaultException<OrganizationServiceFault>> errorHandler = null)
-        {
-            return Retrieve(requests, options, null, absoluteExpirationUtc, errorHandler);
-        }
-
-        /// <summary>
-        ///     Performs data parallelism on a collection of type <see cref="RetrieveRequest" /> to execute
-        ///     <see cref="IOrganizationService" />.Retrieve() requests concurrently
-        /// </summary>
-        /// <param name="requests">The <see cref="RetrieveRequest" /> collection defining the entities to be retrieved</param>
-        /// <param name="options">The configurable options for the parallel <see cref="OrganizationServiceProxy" /> requests</param>
-        /// <param name="slidingExpiration">The sliding cache expiration</param>
-        /// <param name="absoluteExpirationUtc">The absolute cache expiration</param>
-        /// <param name="errorHandler">
-        ///     An optional error handling operation. Handler will be passed the request that failed along
-        ///     with the corresponding <see cref="FaultException{OrganizationServiceFault}" />
-        /// </param>
-        /// <returns>A collection of type <see cref="Entity" /> containing the retrieved entities</returns>
-        /// <remarks>
-        ///     IMPORTANT!! RetrieveMultiple is the favored approach for retrieving multiple entities of the same type
-        ///     This approach should only be used if trying to retrieve multiple individual records of varying entity types.
-        /// </remarks>
-        /// <exception cref="AggregateException">
-        ///     callers should catch <see cref="AggregateException" /> to handle exceptions raised
-        ///     by individual requests
-        /// </exception>
-        private IEnumerable<Entity> Retrieve(IEnumerable<RetrieveRequest> requests,
             OrganizationServiceProxyOptions options, TimeSpan? slidingExpiration = null,
-            DateTime? absoluteExpirationUtc = null,
             Action<RetrieveRequest, FaultException<OrganizationServiceFault>> errorHandler = null)
         {
-            return ExecuteOperationWithResponse<RetrieveRequest, Entity>(requests, options, (request, context) =>
-            {
-                Entity entity;
-                var cacheKey = GetEntityCacheKey(request.Target.LogicalName, request.Target.Id, request.ColumnSet);
-                //avoid thread collision
-                lock (syncRoot)
-                {
-                    //can we get it from cache?
-                    if (ServiceManager.Cache.Exists(cacheKey))
-                    {
-                        //yes
-                        entity = ServiceManager.Cache.Get<Entity>(cacheKey);
-                    }
-                    else
-                    {
-                        //no, retrieve and add it to cache
-                        entity = context.Local.Retrieve(request.Target.LogicalName, request.Target.Id,
-                            request.ColumnSet);
-                        ServiceManager.Cache.Add(entity, cacheKey, slidingExpiration, absoluteExpirationUtc);
-                    }
-                }
-
-                //Collect the result from each iteration in this partition
-                context.Results.Add(entity);
-            }, errorHandler);
+            return this.Retrieve(requests, options, slidingExpiration, null, errorHandler);
         }
 
         /// <summary>
-        /// Gets a cache key for an entity
+        /// Performs data parallelism on a collection of type <see cref="RetrieveRequest"/> to execute <see cref="IOrganizationService"/>.Retrieve() requests concurrently
         /// </summary>
-        /// <param name="logicalName">Entity logical name</param>
-        /// <param name="id">Entity ID</param>
-        /// <param name="columnSet">The columnset returned</param>
-        /// <returns></returns>
-        private string GetEntityCacheKey(string logicalName, Guid id, ColumnSet columnSet)
+        /// <param name="requests">The <see cref="RetrieveRequest"/> collection defining the entities to be retrieved</param>
+        /// <param name="options">The configurable options for the parallel <see cref="OrganizationServiceProxy"/> requests</param>
+        /// <param name="errorHandler">An optional error handling operation. Handler will be passed the request that failed along with the corresponding <see cref="FaultException{OrganizationServiceFault}"/></param>
+        /// <param name="absoluteExpirationUtc">The cache absolute expiration in UTC (If an ICachesStragegy Chosen <see cref="CacheStrategies"/>)</param>
+        /// <returns>A collection of type <see cref="Entity"/> containing the retrieved entities</returns>
+        /// <remarks>
+        /// IMPORTANT!! RetrieveMultiple is the favored approach for retrieving multiple entities of the same type
+        /// This approach should only be used if trying to retrieve multiple individual records of varying entity types.
+        /// </remarks>
+        /// <exception cref="AggregateException">callers should catch <see cref="AggregateException"/> to handle exceptions raised by individual requests</exception>
+        public IEnumerable<Entity> Retrieve(IEnumerable<RetrieveRequest> requests,
+            OrganizationServiceProxyOptions options, DateTime? absoluteExpirationUtc = null,
+            Action<RetrieveRequest, FaultException<OrganizationServiceFault>> errorHandler = null)
         {
-            var colString = JsonConvert.SerializeObject(columnSet);
-            return string.Format("{0}/{1}/{2}", logicalName, id, colString);
+            return this.Retrieve(requests, options, null, absoluteExpirationUtc, errorHandler);
+        }
+
+        /// <summary>
+        /// Performs data parallelism on a collection of type <see cref="RetrieveRequest"/> to execute <see cref="IOrganizationService"/>.Retrieve() requests concurrently
+        /// </summary>
+        /// <param name="requests">The <see cref="RetrieveRequest"/> collection defining the entities to be retrieved</param>
+        /// <param name="options">The configurable options for the parallel <see cref="OrganizationServiceProxy"/> requests</param>
+        /// <param name="errorHandler">An optional error handling operation. Handler will be passed the request that failed along with the corresponding <see cref="FaultException{OrganizationServiceFault}"/></param>
+        /// <param name="slidingExpiration">The cache sliding expiration (If an ICachesStragegy Chosen <see cref="CacheStrategies"/>)</param>
+        /// <param name="absoluteExpirationUtc">The cache absolute expiration in UTC (If an ICachesStragegy Chosen <see cref="CacheStrategies"/>)</param>
+        /// <returns>A collection of type <see cref="Entity"/> containing the retrieved entities</returns>
+        /// <remarks>
+        /// IMPORTANT!! RetrieveMultiple is the favored approach for retrieving multiple entities of the same type
+        /// This approach should only be used if trying to retrieve multiple individual records of varying entity types.
+        /// </remarks>
+        /// <exception cref="AggregateException">callers should catch <see cref="AggregateException"/> to handle exceptions raised by individual requests</exception>
+        private IEnumerable<Entity> Retrieve(IEnumerable<RetrieveRequest> requests, OrganizationServiceProxyOptions options, 
+            TimeSpan? slidingExpiration = null, DateTime? absoluteExpirationUtc = null, 
+            Action<RetrieveRequest, FaultException<OrganizationServiceFault>> errorHandler = null)
+        {
+            return this.ExecuteOperationWithResponse<RetrieveRequest, Entity>(requests, options,
+                (request, context) =>
+                {
+                    var cacheKey = string.Format("Entity[{0}]ID[{1}]Columns[{2}]", request.Target.LogicalName, request.Target.Id, 
+                        request.ColumnSet.ToJson());
+                    //avoid thread collision
+                    lock (syncRoot)
+                    {
+                        Entity entity;
+                        //can we get it from cache?
+                        if (ServiceManager.Cache.Exists(cacheKey))
+                        {
+                            //yes
+                            entity = ServiceManager.Cache.Get<Entity>(cacheKey);
+                        }
+                        else
+                        {
+                            //no, retrieve and add it to cache
+                            entity = context.Local.Retrieve(request.Target.LogicalName, request.Target.Id,
+                                request.ColumnSet);
+                            ServiceManager.Cache.Add(entity, cacheKey, slidingExpiration, absoluteExpirationUtc);
+                        }
+
+                        //Collect the result from each iteration in this partition
+                        context.Results.Add(entity);
+                    }
+                },
+                errorHandler);
         }
 
         #endregion
@@ -938,626 +670,347 @@ namespace Microsoft.Pfe.Xrm
         #region IOrganizationService.RetrieveMultiple()
 
         /// <summary>
-        ///     Performs data parallelism on a keyed collection of <see cref="QueryBase" /> values to execute
-        ///     <see cref="IOrganizationService" />.RetrieveMultiple() requests concurrently
+        /// Performs data parallelism on a keyed collection of <see cref="QueryBase"/> values to execute <see cref="IOrganizationService"/>.RetrieveMultiple() requests concurrently
         /// </summary>
-        /// <param name="queries">The keyed collection of queries (<see cref="QueryExpresion" /> or <see cref="FetchExpression" />)</param>
-        /// <param name="errorHandler">
-        ///     An optional error handling operation. Handler will be passed the request that failed along
-        ///     with the corresponding <see cref="FaultException{OrganizationServiceFault}" />
-        /// </param>
-        /// <returns>A keyed collection of <see cref="EntityCollection" /> values which represent the results of each query</returns>
+        /// <param name="queries">The keyed collection of queries (<see cref="QueryExpression"/> or <see cref="FetchExpression"/>)</param>
+        /// <param name="slidingExpiration">The cache sliding expiration (If an ICachesStragegy Chosen <see cref="CacheStrategies"/>)</param>
+        /// <param name="errorHandler">An optional error handling operation. Handler will be passed the request that failed along with the corresponding <see cref="FaultException{OrganizationServiceFault}"/></param>
+        /// <returns>A keyed collection of <see cref="EntityCollection"/> values which represent the results of each query</returns>
         /// <remarks>
-        ///     Assumes that only the first page of results is desired (shouldRetrieveAllPages: false)
-        ///     Assumes default proxy options should be used (options: new <see cref="OrganizationServiceProxyOptions" />()).
-        ///     IMPORTANT!! This approach should only be used if multiple queries for varying entity types are required or the
-        ///     result set can't be expressed in a single query. In the latter case,
-        ///     leverage NoLock=true where possible to reduce database contention.
+        /// Assumes that only the first page of results is desired (shouldRetrieveAllPages: false)
+        /// Assumes default proxy options should be used (options: new <see cref="OrganizationServiceProxyOptions"/>()).
+        /// 
+        /// IMPORTANT!! This approach should only be used if multiple queries for varying entity types are required or the result set can't be expressed in a single query. In the latter case, 
+        /// leverage NoLock=true where possible to reduce database contention.
         /// </remarks>
-        /// <exception cref="AggregateException">
-        ///     callers should catch <see cref="AggregateException" /> to handle exceptions raised
-        ///     by individual requests
-        /// </exception>
-        public IDictionary<string, EntityCollection> RetrieveMultiple(IDictionary<string, QueryBase> queries,
-            Action<KeyValuePair<string, QueryBase>, FaultException<OrganizationServiceFault>> errorHandler = null)
+        /// <exception cref="AggregateException">callers should catch <see cref="AggregateException"/> to handle exceptions raised by individual requests</exception>
+        public IDictionary<string, EntityCollection> RetrieveMultiple(IDictionary<string, QueryBase> queries, TimeSpan? slidingExpiration, Action<KeyValuePair<string, QueryBase>, FaultException<OrganizationServiceFault>> errorHandler = null)
         {
-            return RetrieveMultiple(queries, false, new OrganizationServiceProxyOptions(), errorHandler);
+            return this.RetrieveMultiple(queries, false, new OrganizationServiceProxyOptions(), slidingExpiration, null, errorHandler);
         }
 
         /// <summary>
-        ///     Performs data parallelism on a keyed collection of <see cref="QueryBase" /> values to execute
-        ///     <see cref="IOrganizationService" />.RetrieveMultiple() requests concurrently
+        /// Performs data parallelism on a keyed collection of <see cref="QueryBase"/> values to execute <see cref="IOrganizationService"/>.RetrieveMultiple() requests concurrently
         /// </summary>
-        /// <param name="queries">The keyed collection of queries (<see cref="QueryExpresion" /> or <see cref="FetchExpression" />)</param>
-        /// <param name="slidingExpiration">The sliding cache expiration</param>
-        /// <param name="errorHandler">
-        ///     An optional error handling operation. Handler will be passed the request that failed along
-        ///     with the corresponding <see cref="FaultException{OrganizationServiceFault}" />
-        /// </param>
-        /// <returns>A keyed collection of <see cref="EntityCollection" /> values which represent the results of each query</returns>
+        /// <param name="queries">The keyed collection of queries (<see cref="QueryExpression"/> or <see cref="FetchExpression"/>)</param>
+        /// <param name="absoluteExpirationUtc">The cache absolute expiration in UTC (If an ICachesStragegy Chosen <see cref="CacheStrategies"/>)</param>
+        /// <param name="errorHandler">An optional error handling operation. Handler will be passed the request that failed along with the corresponding <see cref="FaultException{OrganizationServiceFault}"/></param>
+        /// <returns>A keyed collection of <see cref="EntityCollection"/> values which represent the results of each query</returns>
         /// <remarks>
-        ///     Assumes that only the first page of results is desired (shouldRetrieveAllPages: false)
-        ///     Assumes default proxy options should be used (options: new <see cref="OrganizationServiceProxyOptions" />()).
-        ///     IMPORTANT!! This approach should only be used if multiple queries for varying entity types are required or the
-        ///     result set can't be expressed in a single query. In the latter case,
-        ///     leverage NoLock=true where possible to reduce database contention.
+        /// Assumes that only the first page of results is desired (shouldRetrieveAllPages: false)
+        /// Assumes default proxy options should be used (options: new <see cref="OrganizationServiceProxyOptions"/>()).
+        /// 
+        /// IMPORTANT!! This approach should only be used if multiple queries for varying entity types are required or the result set can't be expressed in a single query. In the latter case, 
+        /// leverage NoLock=true where possible to reduce database contention.
         /// </remarks>
-        /// <exception cref="AggregateException">
-        ///     callers should catch <see cref="AggregateException" /> to handle exceptions raised
-        ///     by individual requests
-        /// </exception>
-        public IDictionary<string, EntityCollection> RetrieveMultiple(IDictionary<string, QueryBase> queries,
-            TimeSpan slidingExpiration,
-            Action<KeyValuePair<string, QueryBase>, FaultException<OrganizationServiceFault>> errorHandler = null)
+        /// <exception cref="AggregateException">callers should catch <see cref="AggregateException"/> to handle exceptions raised by individual requests</exception>
+        public IDictionary<string, EntityCollection> RetrieveMultiple(IDictionary<string, QueryBase> queries, DateTime? absoluteExpirationUtc, Action<KeyValuePair<string, QueryBase>, FaultException<OrganizationServiceFault>> errorHandler = null)
         {
-            return RetrieveMultiple(queries, false, new OrganizationServiceProxyOptions(), slidingExpiration, null,
-                errorHandler);
+            return this.RetrieveMultiple(queries, false, new OrganizationServiceProxyOptions(), null, absoluteExpirationUtc, errorHandler);
         }
 
         /// <summary>
-        ///     Performs data parallelism on a keyed collection of <see cref="QueryBase" /> values to execute
-        ///     <see cref="IOrganizationService" />.RetrieveMultiple() requests concurrently
+        /// Performs data parallelism on a keyed collection of <see cref="QueryBase"/> values to execute <see cref="IOrganizationService"/>.RetrieveMultiple() requests concurrently
         /// </summary>
-        /// <param name="queries">The keyed collection of queries (<see cref="QueryExpresion" /> or <see cref="FetchExpression" />)</param>
-        /// <param name="absoluteExpirationUtc">The absolute cache expiration</param>
-        /// <param name="errorHandler">
-        ///     An optional error handling operation. Handler will be passed the request that failed along
-        ///     with the corresponding <see cref="FaultException{OrganizationServiceFault}" />
-        /// </param>
-        /// <returns>A keyed collection of <see cref="EntityCollection" /> values which represent the results of each query</returns>
+        /// <param name="queries">The keyed collection of queries (<see cref="QueryExpression"/> or <see cref="FetchExpression"/>)</param>
+        /// <param name="options">The configurable options for the parallel <see cref="OrganizationServiceProxy"/> requests</param>
+        /// <param name="slidingExpiration">The cache sliding expiration (If an ICachesStragegy Chosen <see cref="CacheStrategies"/>)</param>
+        /// <param name="errorHandler">An optional error handling operation. Handler will be passed the request that failed along with the corresponding <see cref="FaultException{OrganizationServiceFault}"/></param>
+        /// <returns>A keyed collection of <see cref="EntityCollection"/> values which represent the results of each query</returns>
         /// <remarks>
-        ///     Assumes that only the first page of results is desired (shouldRetrieveAllPages: false)
-        ///     Assumes default proxy options should be used (options: new <see cref="OrganizationServiceProxyOptions" />()).
-        ///     IMPORTANT!! This approach should only be used if multiple queries for varying entity types are required or the
-        ///     result set can't be expressed in a single query. In the latter case,
-        ///     leverage NoLock=true where possible to reduce database contention.
+        /// Assumes that only the first page of results is desired (shouldRetrieveAllPages: false)
+        /// 
+        /// IMPORTANT!! This approach should only be used if multiple queries for varying entity types are required or the result set can't be expressed in a single query. In the latter case, 
+        /// leverage NoLock=true where possible to reduce database contention.
         /// </remarks>
-        /// <exception cref="AggregateException">
-        ///     callers should catch <see cref="AggregateException" /> to handle exceptions raised
-        ///     by individual requests
-        /// </exception>
-        public IDictionary<string, EntityCollection> RetrieveMultiple(IDictionary<string, QueryBase> queries,
-            DateTime absoluteExpirationUtc,
-            Action<KeyValuePair<string, QueryBase>, FaultException<OrganizationServiceFault>> errorHandler = null)
+        /// <exception cref="AggregateException">callers should catch <see cref="AggregateException"/> to handle exceptions raised by individual requests</exception>
+        public IDictionary<string, EntityCollection> RetrieveMultiple(IDictionary<string, QueryBase> queries, OrganizationServiceProxyOptions options, TimeSpan? slidingExpiration, Action<KeyValuePair<string, QueryBase>, FaultException<OrganizationServiceFault>> errorHandler = null)
         {
-            return RetrieveMultiple(queries, false, new OrganizationServiceProxyOptions(), null, absoluteExpirationUtc,
-                errorHandler);
+            return this.RetrieveMultiple(queries, false, options, slidingExpiration, null, errorHandler);
         }
 
         /// <summary>
-        ///     Performs data parallelism on a keyed collection of <see cref="QueryBase" /> values to execute
-        ///     <see cref="IOrganizationService" />.RetrieveMultiple() requests concurrently
+        /// Performs data parallelism on a keyed collection of <see cref="QueryBase"/> values to execute <see cref="IOrganizationService"/>.RetrieveMultiple() requests concurrently
         /// </summary>
-        /// <param name="queries">The keyed collection of queries (<see cref="QueryExpresion" /> or <see cref="FetchExpression" />)</param>
-        /// <param name="options">The configurable options for the parallel <see cref="OrganizationServiceProxy" /> requests</param>
-        /// <param name="errorHandler">
-        ///     An optional error handling operation. Handler will be passed the request that failed along
-        ///     with the corresponding <see cref="FaultException{OrganizationServiceFault}" />
-        /// </param>
-        /// <returns>A keyed collection of <see cref="EntityCollection" /> values which represent the results of each query</returns>
+        /// <param name="queries">The keyed collection of queries (<see cref="QueryExpression"/> or <see cref="FetchExpression"/>)</param>
+        /// <param name="options">The configurable options for the parallel <see cref="OrganizationServiceProxy"/> requests</param>
+        /// <param name="absoluteExpirationUtc">The cache absolute expiration in UTC (If an ICachesStragegy Chosen <see cref="CacheStrategies"/>)</param>
+        /// <param name="errorHandler">An optional error handling operation. Handler will be passed the request that failed along with the corresponding <see cref="FaultException{OrganizationServiceFault}"/></param>
+        /// <returns>A keyed collection of <see cref="EntityCollection"/> values which represent the results of each query</returns>
         /// <remarks>
-        ///     Assumes that only the first page of results is desired (shouldRetrieveAllPages: false)
-        ///     IMPORTANT!! This approach should only be used if multiple queries for varying entity types are required or the
-        ///     result set can't be expressed in a single query. In the latter case,
-        ///     leverage NoLock=true where possible to reduce database contention.
+        /// Assumes that only the first page of results is desired (shouldRetrieveAllPages: false)
+        /// 
+        /// IMPORTANT!! This approach should only be used if multiple queries for varying entity types are required or the result set can't be expressed in a single query. In the latter case, 
+        /// leverage NoLock=true where possible to reduce database contention.
         /// </remarks>
-        /// <exception cref="AggregateException">
-        ///     callers should catch <see cref="AggregateException" /> to handle exceptions raised
-        ///     by individual requests
-        /// </exception>
-        public IDictionary<string, EntityCollection> RetrieveMultiple(IDictionary<string, QueryBase> queries,
-            OrganizationServiceProxyOptions options,
-            Action<KeyValuePair<string, QueryBase>, FaultException<OrganizationServiceFault>> errorHandler = null)
+        /// <exception cref="AggregateException">callers should catch <see cref="AggregateException"/> to handle exceptions raised by individual requests</exception>
+        public IDictionary<string, EntityCollection> RetrieveMultiple(IDictionary<string, QueryBase> queries, OrganizationServiceProxyOptions options, DateTime? absoluteExpirationUtc, Action<KeyValuePair<string, QueryBase>, FaultException<OrganizationServiceFault>> errorHandler = null)
         {
-            return RetrieveMultiple(queries, false, options, errorHandler);
+            return this.RetrieveMultiple(queries, false, options, null, absoluteExpirationUtc, errorHandler);
         }
 
         /// <summary>
-        ///     Performs data parallelism on a keyed collection of <see cref="QueryBase" /> values to execute
-        ///     <see cref="IOrganizationService" />.RetrieveMultiple() requests concurrently
+        /// Performs data parallelism on a keyed collection of <see cref="QueryBase"/> values to execute <see cref="IOrganizationService"/>.RetrieveMultiple() requests concurrently
         /// </summary>
-        /// <param name="queries">The keyed collection of queries (<see cref="QueryExpresion" /> or <see cref="FetchExpression" />)</param>
-        /// <param name="options">The configurable options for the parallel <see cref="OrganizationServiceProxy" /> requests</param>
-        /// <param name="slidingExpiration">The sliding cache expiration</param>
-        /// <param name="errorHandler">
-        ///     An optional error handling operation. Handler will be passed the request that failed along
-        ///     with the corresponding <see cref="FaultException{OrganizationServiceFault}" />
-        /// </param>
-        /// <returns>A keyed collection of <see cref="EntityCollection" /> values which represent the results of each query</returns>
+        /// <param name="queries">The keyed collection of queries (<see cref="QueryExpression"/> or <see cref="FetchExpression"/>)</param>
+        /// <param name="shouldRetrieveAllPages">True = iterative requests will be performed to retrieve all pages, otherwise only the first results page will be returned for each query</param>
+        /// <param name="slidingExpiration">The cache sliding expiration (If an ICachesStragegy Chosen <see cref="CacheStrategies"/>)</param>
+        /// <param name="errorHandler">An optional error handling operation. Handler will be passed the request that failed along with the corresponding <see cref="FaultException{OrganizationServiceFault}"/></param>
+        /// <returns>A keyed collection of <see cref="EntityCollection"/> values which represent the results of each query</returns>
         /// <remarks>
-        ///     Assumes that only the first page of results is desired (shouldRetrieveAllPages: false)
-        ///     IMPORTANT!! This approach should only be used if multiple queries for varying entity types are required or the
-        ///     result set can't be expressed in a single query. In the latter case,
-        ///     leverage NoLock=true where possible to reduce database contention.
+        /// Assumes default proxy options should be used (options: new <see cref="OrganizationServiceProxyOptions"/>()).
+        /// 
+        /// IMPORTANT!! This approach should only be used if multiple queries for varying entity types are required or the result set can't be expressed in a single query. In the latter case, 
+        /// leverage NoLock=true where possible to reduce database contention.
         /// </remarks>
-        /// <exception cref="AggregateException">
-        ///     callers should catch <see cref="AggregateException" /> to handle exceptions raised
-        ///     by individual requests
-        /// </exception>
-        public IDictionary<string, EntityCollection> RetrieveMultiple(IDictionary<string, QueryBase> queries,
-            OrganizationServiceProxyOptions options, TimeSpan slidingExpiration,
-            Action<KeyValuePair<string, QueryBase>, FaultException<OrganizationServiceFault>> errorHandler = null)
+        /// <exception cref="AggregateException">callers should catch <see cref="AggregateException"/> to handle exceptions raised by individual requests</exception>
+        public IDictionary<string, EntityCollection> RetrieveMultiple(IDictionary<string, QueryBase> queries, bool shouldRetrieveAllPages, TimeSpan? slidingExpiration = null, Action<KeyValuePair<string, QueryBase>, FaultException<OrganizationServiceFault>> errorHandler = null)
         {
-            return RetrieveMultiple(queries, false, options, slidingExpiration, null, errorHandler);
+            return this.RetrieveMultiple(queries, shouldRetrieveAllPages, new OrganizationServiceProxyOptions(), slidingExpiration, null, errorHandler);
         }
 
         /// <summary>
-        ///     Performs data parallelism on a keyed collection of <see cref="QueryBase" /> values to execute
-        ///     <see cref="IOrganizationService" />.RetrieveMultiple() requests concurrently
+        /// Performs data parallelism on a keyed collection of <see cref="QueryBase"/> values to execute <see cref="IOrganizationService"/>.RetrieveMultiple() requests concurrently
         /// </summary>
-        /// <param name="queries">The keyed collection of queries (<see cref="QueryExpresion" /> or <see cref="FetchExpression" />)</param>
-        /// <param name="options">The configurable options for the parallel <see cref="OrganizationServiceProxy" /> requests</param>
-        /// <param name="absoluteExpirationUtc">The absolute cache expiration</param>
-        /// <param name="errorHandler">
-        ///     An optional error handling operation. Handler will be passed the request that failed along
-        ///     with the corresponding <see cref="FaultException{OrganizationServiceFault}" />
-        /// </param>
-        /// <returns>A keyed collection of <see cref="EntityCollection" /> values which represent the results of each query</returns>
+        /// <param name="queries">The keyed collection of queries (<see cref="QueryExpression"/> or <see cref="FetchExpression"/>)</param>
+        /// <param name="shouldRetrieveAllPages">True = iterative requests will be performed to retrieve all pages, otherwise only the first results page will be returned for each query</param>
+        /// <param name="absoluteExpirationUtc">The cache absolute expiration in UTC (If an ICachesStragegy Chosen <see cref="CacheStrategies"/>)</param>
+        /// <param name="errorHandler">An optional error handling operation. Handler will be passed the request that failed along with the corresponding <see cref="FaultException{OrganizationServiceFault}"/></param>
+        /// <returns>A keyed collection of <see cref="EntityCollection"/> values which represent the results of each query</returns>
         /// <remarks>
-        ///     Assumes that only the first page of results is desired (shouldRetrieveAllPages: false)
-        ///     IMPORTANT!! This approach should only be used if multiple queries for varying entity types are required or the
-        ///     result set can't be expressed in a single query. In the latter case,
-        ///     leverage NoLock=true where possible to reduce database contention.
+        /// Assumes default proxy options should be used (options: new <see cref="OrganizationServiceProxyOptions"/>()).
+        /// 
+        /// IMPORTANT!! This approach should only be used if multiple queries for varying entity types are required or the result set can't be expressed in a single query. In the latter case, 
+        /// leverage NoLock=true where possible to reduce database contention.
         /// </remarks>
-        /// <exception cref="AggregateException">
-        ///     callers should catch <see cref="AggregateException" /> to handle exceptions raised
-        ///     by individual requests
-        /// </exception>
-        public IDictionary<string, EntityCollection> RetrieveMultiple(IDictionary<string, QueryBase> queries,
-            OrganizationServiceProxyOptions options, DateTime absoluteExpirationUtc,
-            Action<KeyValuePair<string, QueryBase>, FaultException<OrganizationServiceFault>> errorHandler = null)
+        /// <exception cref="AggregateException">callers should catch <see cref="AggregateException"/> to handle exceptions raised by individual requests</exception>
+        public IDictionary<string, EntityCollection> RetrieveMultiple(IDictionary<string, QueryBase> queries, bool shouldRetrieveAllPages, DateTime? absoluteExpirationUtc = null, Action<KeyValuePair<string, QueryBase>, FaultException<OrganizationServiceFault>> errorHandler = null)
         {
-            return RetrieveMultiple(queries, false, options, null, absoluteExpirationUtc, errorHandler);
+            return this.RetrieveMultiple(queries, shouldRetrieveAllPages, new OrganizationServiceProxyOptions(), null, absoluteExpirationUtc, errorHandler);
         }
 
         /// <summary>
-        ///     Performs data parallelism on a keyed collection of <see cref="QueryBase" /> values to execute
-        ///     <see cref="IOrganizationService" />.RetrieveMultiple() requests concurrently
+        /// Performs data parallelism on a keyed collection of <see cref="QueryBase"/> values to execute <see cref="IOrganizationService"/>.RetrieveMultiple() requests concurrently
         /// </summary>
-        /// <param name="queries">The keyed collection of queries (<see cref="QueryExpresion" /> or <see cref="FetchExpression" />)</param>
-        /// <param name="shouldRetrieveAllPages">
-        ///     True = iterative requests will be performed to retrieve all pages, otherwise only
-        ///     the first results page will be returned for each query
-        /// </param>
-        /// <param name="errorHandler">
-        ///     An optional error handling operation. Handler will be passed the request that failed along
-        ///     with the corresponding <see cref="FaultException{OrganizationServiceFault}" />
-        /// </param>
-        /// <returns>A keyed collection of <see cref="EntityCollection" /> values which represent the results of each query</returns>
+        /// <param name="queries">The keyed collection of queries (<see cref="QueryExpression"/> or <see cref="FetchExpression"/>)</param>
+        /// <param name="shouldRetrieveAllPages">True = iterative requests will be performed to retrieve all pages, otherwise only the first results page will be returned for each query</param>
+        /// <param name="options">The configurable options for the parallel <see cref="OrganizationServiceProxy"/> requests</param>
+        /// <param name="slidingExpiration">The cache sliding expiration (If an ICachesStragegy Chosen <see cref="CacheStrategies"/>)</param>
+        /// <param name="errorHandler">An optional error handling operation. Handler will be passed the request that failed along with the corresponding <see cref="FaultException{OrganizationServiceFault}"/></param>        
+        /// <returns>A keyed collection of <see cref="EntityCollection"/> values which represent the results of each query</returns>
         /// <remarks>
-        ///     Assumes default proxy options should be used (options: new <see cref="OrganizationServiceProxyOptions" />()).
-        ///     IMPORTANT!! This approach should only be used if multiple queries for varying entity types are required or the
-        ///     result set can't be expressed in a single query. In the latter case,
-        ///     leverage NoLock=true where possible to reduce database contention.
+        /// IMPORTANT!! This approach should only be used if multiple queries for varying entity types are required or the result set can't be expressed in a single query. In the latter case, 
+        /// leverage NoLock=true where possible to reduce database contention.
         /// </remarks>
-        /// <exception cref="AggregateException">
-        ///     callers should catch <see cref="AggregateException" /> to handle exceptions raised
-        ///     by individual requests
-        /// </exception>
-        public IDictionary<string, EntityCollection> RetrieveMultiple(IDictionary<string, QueryBase> queries,
-            bool shouldRetrieveAllPages,
+        /// <exception cref="AggregateException">callers should catch <see cref="AggregateException"/> to handle exceptions raised by individual requests</exception>
+        public IDictionary<string, EntityCollection> RetrieveMultiple(IDictionary<string, QueryBase> queries, bool shouldRetrieveAllPages,
+            OrganizationServiceProxyOptions options, TimeSpan? slidingExpiration,
             Action<KeyValuePair<string, QueryBase>, FaultException<OrganizationServiceFault>> errorHandler = null)
         {
-            return RetrieveMultiple(queries, shouldRetrieveAllPages, new OrganizationServiceProxyOptions(),
-                errorHandler);
+            return this.RetrieveMultiple(queries, shouldRetrieveAllPages, options, slidingExpiration, null, errorHandler);
         }
 
         /// <summary>
-        ///     Performs data parallelism on a keyed collection of <see cref="QueryBase" /> values to execute
-        ///     <see cref="IOrganizationService" />.RetrieveMultiple() requests concurrently
+        /// Performs data parallelism on a keyed collection of <see cref="QueryBase"/> values to execute <see cref="IOrganizationService"/>.RetrieveMultiple() requests concurrently
         /// </summary>
-        /// <param name="queries">The keyed collection of queries (<see cref="QueryExpresion" /> or <see cref="FetchExpression" />)</param>
-        /// <param name="shouldRetrieveAllPages">
-        ///     True = iterative requests will be performed to retrieve all pages, otherwise only
-        ///     the first results page will be returned for each query
-        /// </param>
-        /// <param name="slidingExpiration">The sliding cache expiration</param>
-        /// <param name="errorHandler">
-        ///     An optional error handling operation. Handler will be passed the request that failed along
-        ///     with the corresponding <see cref="FaultException{OrganizationServiceFault}" />
-        /// </param>
-        /// <returns>A keyed collection of <see cref="EntityCollection" /> values which represent the results of each query</returns>
+        /// <param name="queries">The keyed collection of queries (<see cref="QueryExpression"/> or <see cref="FetchExpression"/>)</param>
+        /// <param name="shouldRetrieveAllPages">True = iterative requests will be performed to retrieve all pages, otherwise only the first results page will be returned for each query</param>
+        /// <param name="options">The configurable options for the parallel <see cref="OrganizationServiceProxy"/> requests</param>
+        /// <param name="absoluteExpirationUtc">The cache absolute expiration in UTC (If an ICachesStragegy Chosen <see cref="CacheStrategies"/>)</param>
+        /// <param name="errorHandler">An optional error handling operation. Handler will be passed the request that failed along with the corresponding <see cref="FaultException{OrganizationServiceFault}"/></param>        
+        /// <returns>A keyed collection of <see cref="EntityCollection"/> values which represent the results of each query</returns>
         /// <remarks>
-        ///     Assumes default proxy options should be used (options: new <see cref="OrganizationServiceProxyOptions" />()).
-        ///     IMPORTANT!! This approach should only be used if multiple queries for varying entity types are required or the
-        ///     result set can't be expressed in a single query. In the latter case,
-        ///     leverage NoLock=true where possible to reduce database contention.
+        /// IMPORTANT!! This approach should only be used if multiple queries for varying entity types are required or the result set can't be expressed in a single query. In the latter case, 
+        /// leverage NoLock=true where possible to reduce database contention.
         /// </remarks>
-        /// <exception cref="AggregateException">
-        ///     callers should catch <see cref="AggregateException" /> to handle exceptions raised
-        ///     by individual requests
-        /// </exception>
+        /// <exception cref="AggregateException">callers should catch <see cref="AggregateException"/> to handle exceptions raised by individual requests</exception>
         public IDictionary<string, EntityCollection> RetrieveMultiple(IDictionary<string, QueryBase> queries,
-            bool shouldRetrieveAllPages, TimeSpan slidingExpiration,
+            bool shouldRetrieveAllPages, OrganizationServiceProxyOptions options, DateTime? absoluteExpirationUtc,
             Action<KeyValuePair<string, QueryBase>, FaultException<OrganizationServiceFault>> errorHandler = null)
         {
-            return RetrieveMultiple(queries, shouldRetrieveAllPages, new OrganizationServiceProxyOptions(),
-                slidingExpiration, null, errorHandler);
+            return this.RetrieveMultiple(queries, shouldRetrieveAllPages, options, null, absoluteExpirationUtc, errorHandler);
         }
 
         /// <summary>
-        ///     Performs data parallelism on a keyed collection of <see cref="QueryBase" /> values to execute
-        ///     <see cref="IOrganizationService" />.RetrieveMultiple() requests concurrently
+        /// Performs data parallelism on a keyed collection of <see cref="QueryBase"/> values to execute <see cref="IOrganizationService"/>.RetrieveMultiple() requests concurrently
         /// </summary>
-        /// <param name="queries">The keyed collection of queries (<see cref="QueryExpresion" /> or <see cref="FetchExpression" />)</param>
-        /// <param name="shouldRetrieveAllPages">
-        ///     True = iterative requests will be performed to retrieve all pages, otherwise only
-        ///     the first results page will be returned for each query
-        /// </param>
-        /// <param name="absoluteExpirationUtc">The absolute cache expiration</param>
-        /// <param name="errorHandler">
-        ///     An optional error handling operation. Handler will be passed the request that failed along
-        ///     with the corresponding <see cref="FaultException{OrganizationServiceFault}" />
-        /// </param>
-        /// <returns>A keyed collection of <see cref="EntityCollection" /> values which represent the results of each query</returns>
+        /// <param name="queries">The keyed collection of queries (<see cref="QueryExpression"/> or <see cref="FetchExpression"/>)</param>
+        /// <param name="shouldRetrieveAllPages">True = iterative requests will be performed to retrieve all pages, otherwise only the first results page will be returned for each query</param>
+        /// <param name="options">The configurable options for the parallel <see cref="OrganizationServiceProxy"/> requests</param>
+        /// <param name="slidingExpiration">The cache sliding expiration (If an ICachesStragegy Chosen <see cref="CacheStrategies"/>)</param>
+        /// <param name="absoluteExpirationUtc">The cache absolute expiration in UTC (If an ICachesStragegy Chosen <see cref="CacheStrategies"/>)</param>
+        /// <param name="errorHandler">An optional error handling operation. Handler will be passed the request that failed along with the corresponding <see cref="FaultException{OrganizationServiceFault}"/></param>        
+        /// <returns>A keyed collection of <see cref="EntityCollection"/> values which represent the results of each query</returns>
         /// <remarks>
-        ///     Assumes default proxy options should be used (options: new <see cref="OrganizationServiceProxyOptions" />()).
-        ///     IMPORTANT!! This approach should only be used if multiple queries for varying entity types are required or the
-        ///     result set can't be expressed in a single query. In the latter case,
-        ///     leverage NoLock=true where possible to reduce database contention.
+        /// IMPORTANT!! This approach should only be used if multiple queries for varying entity types are required or the result set can't be expressed in a single query. In the latter case, 
+        /// leverage NoLock=true where possible to reduce database contention.
         /// </remarks>
-        /// <exception cref="AggregateException">
-        ///     callers should catch <see cref="AggregateException" /> to handle exceptions raised
-        ///     by individual requests
-        /// </exception>
-        public IDictionary<string, EntityCollection> RetrieveMultiple(IDictionary<string, QueryBase> queries,
-            bool shouldRetrieveAllPages, DateTime absoluteExpirationUtc,
+        /// <exception cref="AggregateException">callers should catch <see cref="AggregateException"/> to handle exceptions raised by individual requests</exception>
+        private IDictionary<string, EntityCollection> RetrieveMultiple(IDictionary<string, QueryBase> queries, bool shouldRetrieveAllPages, 
+            OrganizationServiceProxyOptions options, TimeSpan? slidingExpiration, DateTime? absoluteExpirationUtc, 
             Action<KeyValuePair<string, QueryBase>, FaultException<OrganizationServiceFault>> errorHandler = null)
         {
-            return RetrieveMultiple(queries, shouldRetrieveAllPages, new OrganizationServiceProxyOptions(), null,
-                absoluteExpirationUtc, errorHandler);
-        }
+            return this.ExecuteOperationWithResponse<KeyValuePair<string, QueryBase>, KeyValuePair<string, EntityCollection>>(queries, options,
+                    (query, context) =>
+                    {
+                        var result = context.Local.RetrieveMultiple(query.Value, shouldRetrieveAllPages, slidingExpiration, absoluteExpirationUtc);
 
-        /// <summary>
-        ///     Performs data parallelism on a keyed collection of <see cref="QueryBase" /> values to execute
-        ///     <see cref="IOrganizationService" />.RetrieveMultiple() requests concurrently
-        /// </summary>
-        /// <param name="queries">The keyed collection of queries (<see cref="QueryExpresion" /> or <see cref="FetchExpression" />)</param>
-        /// <param name="shouldRetrieveAllPages">
-        ///     True = iterative requests will be performed to retrieve all pages, otherwise only
-        ///     the first results page will be returned for each query
-        /// </param>
-        /// <param name="options">The configurable options for the parallel <see cref="OrganizationServiceProxy" /> requests</param>
-        /// <param name="errorHandler">
-        ///     An optional error handling operation. Handler will be passed the request that failed along
-        ///     with the corresponding <see cref="FaultException{OrganizationServiceFault}" />
-        /// </param>
-        /// <returns>A keyed collection of <see cref="EntityCollection" /> values which represent the results of each query</returns>
-        /// <remarks>
-        ///     IMPORTANT!! This approach should only be used if multiple queries for varying entity types are required or the
-        ///     result set can't be expressed in a single query. In the latter case,
-        ///     leverage NoLock=true where possible to reduce database contention.
-        /// </remarks>
-        /// <exception cref="AggregateException">
-        ///     callers should catch <see cref="AggregateException" /> to handle exceptions raised
-        ///     by individual requests
-        /// </exception>
-        public IDictionary<string, EntityCollection> RetrieveMultiple(IDictionary<string, QueryBase> queries,
-            bool shouldRetrieveAllPages, OrganizationServiceProxyOptions options,
-            Action<KeyValuePair<string, QueryBase>, FaultException<OrganizationServiceFault>> errorHandler = null)
-        {
-            return RetrieveMultiple(queries, shouldRetrieveAllPages, options, null, null, errorHandler);
-        }
-
-        /// <summary>
-        ///     Performs data parallelism on a keyed collection of <see cref="QueryBase" /> values to execute
-        ///     <see cref="IOrganizationService" />.RetrieveMultiple() requests concurrently
-        /// </summary>
-        /// <param name="queries">The keyed collection of queries (<see cref="QueryExpresion" /> or <see cref="FetchExpression" />)</param>
-        /// <param name="shouldRetrieveAllPages">
-        ///     True = iterative requests will be performed to retrieve all pages, otherwise only
-        ///     the first results page will be returned for each query
-        /// </param>
-        /// <param name="options">The configurable options for the parallel <see cref="OrganizationServiceProxy" /> requests</param>
-        /// <param name="slidingExpiration">The sliding cache expiration</param>
-        /// <param name="errorHandler">
-        ///     An optional error handling operation. Handler will be passed the request that failed along
-        ///     with the corresponding <see cref="FaultException{OrganizationServiceFault}" />
-        /// </param>
-        /// <returns>A keyed collection of <see cref="EntityCollection" /> values which represent the results of each query</returns>
-        /// <remarks>
-        ///     IMPORTANT!! This approach should only be used if multiple queries for varying entity types are required or the
-        ///     result set can't be expressed in a single query. In the latter case,
-        ///     leverage NoLock=true where possible to reduce database contention.
-        /// </remarks>
-        /// <exception cref="AggregateException">
-        ///     callers should catch <see cref="AggregateException" /> to handle exceptions raised
-        ///     by individual requests
-        /// </exception>
-        public IDictionary<string, EntityCollection> RetrieveMultiple(IDictionary<string, QueryBase> queries,
-            bool shouldRetrieveAllPages, OrganizationServiceProxyOptions options, TimeSpan slidingExpiration,
-            Action<KeyValuePair<string, QueryBase>, FaultException<OrganizationServiceFault>> errorHandler = null)
-        {
-            return RetrieveMultiple(queries, shouldRetrieveAllPages, options, slidingExpiration, null, errorHandler);
-        }
-
-        /// <summary>
-        ///     Performs data parallelism on a keyed collection of <see cref="QueryBase" /> values to execute
-        ///     <see cref="IOrganizationService" />.RetrieveMultiple() requests concurrently
-        /// </summary>
-        /// <param name="queries">The keyed collection of queries (<see cref="QueryExpresion" /> or <see cref="FetchExpression" />)</param>
-        /// <param name="shouldRetrieveAllPages">
-        ///     True = iterative requests will be performed to retrieve all pages, otherwise only
-        ///     the first results page will be returned for each query
-        /// </param>
-        /// <param name="options">The configurable options for the parallel <see cref="OrganizationServiceProxy" /> requests</param>
-        /// <param name="absoluteExpirationUtc">The absolute cache expiration</param>
-        /// <param name="errorHandler">
-        ///     An optional error handling operation. Handler will be passed the request that failed along
-        ///     with the corresponding <see cref="FaultException{OrganizationServiceFault}" />
-        /// </param>
-        /// <returns>A keyed collection of <see cref="EntityCollection" /> values which represent the results of each query</returns>
-        /// <remarks>
-        ///     IMPORTANT!! This approach should only be used if multiple queries for varying entity types are required or the
-        ///     result set can't be expressed in a single query. In the latter case,
-        ///     leverage NoLock=true where possible to reduce database contention.
-        /// </remarks>
-        /// <exception cref="AggregateException">
-        ///     callers should catch <see cref="AggregateException" /> to handle exceptions raised
-        ///     by individual requests
-        /// </exception>
-        public IDictionary<string, EntityCollection> RetrieveMultiple(IDictionary<string, QueryBase> queries,
-            bool shouldRetrieveAllPages, OrganizationServiceProxyOptions options, DateTime absoluteExpirationUtc,
-            Action<KeyValuePair<string, QueryBase>, FaultException<OrganizationServiceFault>> errorHandler = null)
-        {
-            return RetrieveMultiple(queries, shouldRetrieveAllPages, options, null, absoluteExpirationUtc, errorHandler);
-        }
-
-        /// <summary>
-        ///     Performs data parallelism on a keyed collection of <see cref="QueryBase" /> values to execute
-        ///     <see cref="IOrganizationService" />.RetrieveMultiple() requests concurrently
-        /// </summary>
-        /// <param name="queries">The keyed collection of queries (<see cref="QueryExpresion" /> or <see cref="FetchExpression" />)</param>
-        /// <param name="shouldRetrieveAllPages">
-        ///     True = iterative requests will be performed to retrieve all pages, otherwise only
-        ///     the first results page will be returned for each query
-        /// </param>
-        /// <param name="options">The configurable options for the parallel <see cref="OrganizationServiceProxy" /> requests</param>
-        /// <param name="slidingExpiration">The sliding cache expiration</param>
-        /// <param name="absoluteExpirationUtc">The absolute cache expiration</param>
-        /// <param name="errorHandler">
-        ///     An optional error handling operation. Handler will be passed the request that failed along
-        ///     with the corresponding <see cref="FaultException{OrganizationServiceFault}" />
-        /// </param>
-        /// <returns>A keyed collection of <see cref="EntityCollection" /> values which represent the results of each query</returns>
-        /// <remarks>
-        ///     IMPORTANT!! This approach should only be used if multiple queries for varying entity types are required or the
-        ///     result set can't be expressed in a single query. In the latter case,
-        ///     leverage NoLock=true where possible to reduce database contention.
-        /// </remarks>
-        /// <exception cref="AggregateException">
-        ///     callers should catch <see cref="AggregateException" /> to handle exceptions raised
-        ///     by individual requests
-        /// </exception>
-        private IDictionary<string, EntityCollection> RetrieveMultiple(IDictionary<string, QueryBase> queries,
-            bool shouldRetrieveAllPages, OrganizationServiceProxyOptions options, TimeSpan? slidingExpiration = null,
-            DateTime? absoluteExpirationUtc = null,
-            Action<KeyValuePair<string, QueryBase>, FaultException<OrganizationServiceFault>> errorHandler = null)
-        {
-            return ExecuteOperationWithResponse<KeyValuePair<string, QueryBase>, KeyValuePair<string, EntityCollection>
-            >(queries, options, (query, context) =>
-            {
-                var result = context.Local.RetrieveMultiple(query.Value, shouldRetrieveAllPages, slidingExpiration, absoluteExpirationUtc);
-
-                context.Results.Add(new KeyValuePair<string, EntityCollection>(query.Key, result));
-            }, errorHandler).ToDictionary(r => r.Key, r => r.Value);
-        }
+                        context.Results.Add(new KeyValuePair<string, EntityCollection>(query.Key, result));
+                    },
+                    errorHandler)
+                    .ToDictionary(r => r.Key, r => r.Value);
+        }     
 
         #endregion
 
         #region IOrganizationService.Execute()
 
         /// <summary>
-        ///     Performs data parallelism on a keyed collection of type <see cref="OrganizationRequest" /> to execute
-        ///     <see cref="IOrganizationService" />.Execute() requests concurrently
+        /// Performs data parallelism on a keyed collection of type <see cref="OrganizationRequest"/> to execute <see cref="IOrganizationService"/>.Execute() requests concurrently
         /// </summary>
         /// <param name="requests">The keyed collection of requests to be executed</param>
-        /// <param name="errorHandler">
-        ///     An optional error handling operation. Handler will be passed the request that failed along
-        ///     with the corresponding <see cref="FaultException{OrganizationServiceFault}" />
-        /// </param>
-        /// <returns>
-        ///     A keyed collection of type <see cref="OrganizationResponse" /> containing the responses to each executed
-        ///     request
-        /// </returns>
-        /// <exception cref="AggregateException">
-        ///     callers should catch <see cref="AggregateException" /> to handle exceptions raised
-        ///     by individual requests
-        /// </exception>
-        public IDictionary<string, OrganizationResponse> Execute(IDictionary<string, OrganizationRequest> requests,
-            Action<KeyValuePair<string, OrganizationRequest>, FaultException<OrganizationServiceFault>> errorHandler =
-                null)
+        /// <param name="errorHandler">An optional error handling operation. Handler will be passed the request that failed along with the corresponding <see cref="FaultException{OrganizationServiceFault}"/></param>
+        /// <returns>A keyed collection of type <see cref="OrganizationResponse"/> containing the responses to each executed request</returns>
+        /// <exception cref="AggregateException">callers should catch <see cref="AggregateException"/> to handle exceptions raised by individual requests</exception>
+        public IDictionary<string, OrganizationResponse> Execute(IDictionary<string, OrganizationRequest> requests, Action<KeyValuePair<string, OrganizationRequest>, FaultException<OrganizationServiceFault>> errorHandler = null)
         {
-            return Execute(requests, new OrganizationServiceProxyOptions(), errorHandler);
+            return this.Execute(requests, new OrganizationServiceProxyOptions(), errorHandler);
         }
 
         /// <summary>
-        ///     Performs data parallelism on a keyed collection of type <see cref="OrganizationRequest" /> to execute
-        ///     <see cref="IOrganizationService" />.Execute() requests concurrently
+        /// Performs data parallelism on a keyed collection of type <see cref="OrganizationRequest"/> to execute <see cref="IOrganizationService"/>.Execute() requests concurrently
         /// </summary>
         /// <param name="requests">The keyed collection of requests to be executed</param>
-        /// <param name="options">The configurable options for the parallel <see cref="OrganizationServiceProxy" /> requests</param>
-        /// <param name="errorHandler">
-        ///     An optional error handling operation. Handler will be passed the request that failed along
-        ///     with the corresponding <see cref="FaultException{OrganizationServiceFault}" />
-        /// </param>
-        /// <returns>
-        ///     A keyed collection of type <see cref="OrganizationResponse" /> containing the responses to each executed
-        ///     request
-        /// </returns>
-        /// <exception cref="AggregateException">
-        ///     callers should catch <see cref="AggregateException" /> to handle exceptions raised
-        ///     by individual requests
-        /// </exception>
-        public IDictionary<string, OrganizationResponse> Execute(IDictionary<string, OrganizationRequest> requests,
-            OrganizationServiceProxyOptions options,
-            Action<KeyValuePair<string, OrganizationRequest>, FaultException<OrganizationServiceFault>> errorHandler =
-                null)
+        /// <param name="options">The configurable options for the parallel <see cref="OrganizationServiceProxy"/> requests</param>
+        /// <param name="errorHandler">An optional error handling operation. Handler will be passed the request that failed along with the corresponding <see cref="FaultException{OrganizationServiceFault}"/></param>
+        /// <returns>A keyed collection of type <see cref="OrganizationResponse"/> containing the responses to each executed request</returns>
+        /// <exception cref="AggregateException">callers should catch <see cref="AggregateException"/> to handle exceptions raised by individual requests</exception>
+        public IDictionary<string, OrganizationResponse> Execute(IDictionary<string, OrganizationRequest> requests, OrganizationServiceProxyOptions options, Action<KeyValuePair<string, OrganizationRequest>, FaultException<OrganizationServiceFault>> errorHandler = null)
         {
-            return ExecuteOperationWithResponse<KeyValuePair<string, OrganizationRequest>,
-                KeyValuePair<string, OrganizationResponse>>(requests, options, (request, context) =>
-            {
-                var response = context.Local.Execute(request.Value);
-
-                //Collect the result from each iteration in this partition
-                context.Results.Add(new KeyValuePair<string, OrganizationResponse>(request.Key, response));
-            }, errorHandler).ToDictionary(r => r.Key, r => r.Value);
-        }
-
-        /// <summary>
-        ///     Performs data parallelism on a keyed collection of type TRequest to execute <see cref="IOrganizationService" />
-        ///     .Execute() requests concurrently
-        /// </summary>
-        /// <typeparam name="TRequest">The request type that derives from <see cref="OrganiztionRequest" /></typeparam>
-        /// <typeparam name="TResponse">The response type that derives from <see cref="OrganizationResponse" /></typeparam>
-        /// <param name="requests">The keyed collection of requests to be executed</param>
-        /// <param name="errorHandler">
-        ///     An optional error handling operation. Handler will be passed the request that failed along
-        ///     with the corresponding <see cref="FaultException{OrganizationServiceFault}" />
-        /// </param>
-        /// <returns>A keyed collection of type TResponse containing the responses to each executed request</returns>
-        /// <exception cref="AggregateException">
-        ///     Callers should catch <see cref="AggregateException" /> to handle exceptions raised
-        ///     by individual requests
-        /// </exception>
-        public IDictionary<string, TResponse> Execute<TRequest, TResponse>(IDictionary<string, TRequest> requests,
-            Action<KeyValuePair<string, TRequest>, FaultException<OrganizationServiceFault>> errorHandler = null)
-            where TRequest : OrganizationRequest where TResponse : OrganizationResponse
-        {
-            return Execute<TRequest, TResponse>(requests, new OrganizationServiceProxyOptions(), errorHandler);
-        }
-
-        /// <summary>
-        ///     Performs data parallelism on a keyed collection of type TRequest to execute <see cref="IOrganizationService" />
-        ///     .Execute() requests concurrently
-        /// </summary>
-        /// <typeparam name="TRequest">The request type that derives from <see cref="OrganiztionRequest" /></typeparam>
-        /// <typeparam name="TResponse">The response type that derives from <see cref="OrganizationResponse" /></typeparam>
-        /// <param name="requests">The keyed collection of requests to be executed</param>
-        /// <param name="options">The configurable options for the parallel <see cref="OrganizationServiceProxy" /> requests</param>
-        /// <param name="errorHandler">
-        ///     An optional error handling operation. Handler will be passed the request that failed along
-        ///     with the corresponding <see cref="FaultException{OrganizationServiceFault}" />
-        /// </param>
-        /// <returns>A keyed collection of type TResponse containing the responses to each executed request</returns>
-        /// <exception cref="AggregateException">
-        ///     Callers should catch <see cref="AggregateException" /> to handle exceptions raised
-        ///     by individual requests
-        /// </exception>
-        public IDictionary<string, TResponse> Execute<TRequest, TResponse>(IDictionary<string, TRequest> requests,
-            OrganizationServiceProxyOptions options,
-            Action<KeyValuePair<string, TRequest>, FaultException<OrganizationServiceFault>> errorHandler = null)
-            where TRequest : OrganizationRequest where TResponse : OrganizationResponse
-        {
-            return ExecuteOperationWithResponse<KeyValuePair<string, TRequest>, KeyValuePair<string, TResponse>>(
-                requests, options, (request, context) =>
+            return this.ExecuteOperationWithResponse<KeyValuePair<string, OrganizationRequest>, KeyValuePair<string, OrganizationResponse>>(requests, options,
+                (request, context) =>
                 {
-                    var response = (TResponse) context.Local.Execute(request.Value);
+                    var response = context.Local.Execute(request.Value);
+
+                    //Collect the result from each iteration in this partition
+                    context.Results.Add(new KeyValuePair<string, OrganizationResponse>(request.Key, response));
+                },
+                errorHandler)
+                .ToDictionary(r => r.Key, r => r.Value);
+        }
+
+        /// <summary>
+        /// Performs data parallelism on a keyed collection of type TRequest to execute <see cref="IOrganizationService"/>.Execute() requests concurrently
+        /// </summary>
+        /// <typeparam name="TRequest">The request type that derives from <see cref="OrganiztionRequest"/></typeparam>
+        /// <typeparam name="TResponse">The response type that derives from <see cref="OrganizationResponse"/></typeparam>
+        /// <param name="requests">The keyed collection of requests to be executed</param>
+        /// <param name="errorHandler">An optional error handling operation. Handler will be passed the request that failed along with the corresponding <see cref="FaultException{OrganizationServiceFault}"/></param>
+        /// <returns>A keyed collection of type TResponse containing the responses to each executed request</returns>
+        /// <exception cref="AggregateException">Callers should catch <see cref="AggregateException"/> to handle exceptions raised by individual requests</exception>
+        public IDictionary<string, TResponse> Execute<TRequest, TResponse>(IDictionary<string, TRequest> requests, Action<KeyValuePair<string, TRequest>, FaultException<OrganizationServiceFault>> errorHandler = null)
+            where TRequest : OrganizationRequest
+            where TResponse : OrganizationResponse
+        {
+            return this.Execute<TRequest, TResponse>(requests, new OrganizationServiceProxyOptions(), errorHandler);
+        }
+
+        /// <summary>
+        /// Performs data parallelism on a keyed collection of type TRequest to execute <see cref="IOrganizationService"/>.Execute() requests concurrently
+        /// </summary>
+        /// <typeparam name="TRequest">The request type that derives from <see cref="OrganiztionRequest"/></typeparam>
+        /// <typeparam name="TResponse">The response type that derives from <see cref="OrganizationResponse"/></typeparam>
+        /// <param name="requests">The keyed collection of requests to be executed</param>
+        /// <param name="options">The configurable options for the parallel <see cref="OrganizationServiceProxy"/> requests</param>
+        /// <param name="errorHandler">An optional error handling operation. Handler will be passed the request that failed along with the corresponding <see cref="FaultException{OrganizationServiceFault}"/></param>
+        /// <returns>A keyed collection of type TResponse containing the responses to each executed request</returns>
+        /// <exception cref="AggregateException">Callers should catch <see cref="AggregateException"/> to handle exceptions raised by individual requests</exception>
+        public IDictionary<string, TResponse> Execute<TRequest, TResponse>(IDictionary<string, TRequest> requests, OrganizationServiceProxyOptions options, Action<KeyValuePair<string, TRequest>, FaultException<OrganizationServiceFault>> errorHandler = null)
+            where TRequest : OrganizationRequest
+            where TResponse : OrganizationResponse
+        {
+            return this.ExecuteOperationWithResponse<KeyValuePair<string, TRequest>, KeyValuePair<string, TResponse>>(requests, options,
+                (request, context) =>
+                {
+                    var response = (TResponse)context.Local.Execute(request.Value);
 
                     context.Results.Add(new KeyValuePair<string, TResponse>(request.Key, response));
-                }, errorHandler).ToDictionary(r => r.Key, r => r.Value);
+                },
+                errorHandler)
+                .ToDictionary(r => r.Key, r => r.Value);
         }
 
         /// <summary>
-        ///     Performs data parallelism on a collection of type <see cref="OrganizationRequest" /> to execute
-        ///     <see cref="IOrganizationService" />.Execute() requests concurrently
+        /// Performs data parallelism on a collection of type <see cref="OrganizationRequest"/> to execute <see cref="IOrganizationService"/>.Execute() requests concurrently
         /// </summary>
         /// <param name="requests">The requests to be executed</param>
-        /// <param name="errorHandler">
-        ///     An optional error handling operation. Handler will be passed the request that failed along
-        ///     with the corresponding <see cref="FaultException{OrganizationServiceFault}" />
-        /// </param>
-        /// <returns>A collection of type <see cref="OrganizationResponse" /> containing the responses to each executed request</returns>
-        /// <exception cref="AggregateException">
-        ///     Callers should catch <see cref="AggregateException" /> to handle exceptions raised
-        ///     by individual requests
-        /// </exception>
-        public IEnumerable<OrganizationResponse> Execute(IEnumerable<OrganizationRequest> requests,
-            Action<OrganizationRequest, FaultException<OrganizationServiceFault>> errorHandler = null)
+        /// <param name="errorHandler">An optional error handling operation. Handler will be passed the request that failed along with the corresponding <see cref="FaultException{OrganizationServiceFault}"/></param>        
+        /// <returns>A collection of type <see cref="OrganizationResponse"/> containing the responses to each executed request</returns>
+        /// <exception cref="AggregateException">Callers should catch <see cref="AggregateException"/> to handle exceptions raised by individual requests</exception>
+        public IEnumerable<OrganizationResponse> Execute(IEnumerable<OrganizationRequest> requests, Action<OrganizationRequest, FaultException<OrganizationServiceFault>> errorHandler = null)
         {
-            return Execute(requests, new OrganizationServiceProxyOptions(), errorHandler);
+            return this.Execute(requests, new OrganizationServiceProxyOptions(), errorHandler);
         }
 
         /// <summary>
-        ///     Performs data parallelism on a collection of type <see cref="OrganizationRequest" /> to execute
-        ///     <see cref="IOrganizationService" />.Execute() requests concurrently
+        /// Performs data parallelism on a collection of type <see cref="OrganizationRequest"/> to execute <see cref="IOrganizationService"/>.Execute() requests concurrently
         /// </summary>
         /// <param name="requests">The requests to be executed</param>
-        /// <param name="options">The configurable options for the parallel <see cref="OrganizationServiceProxy" /> requests</param>
-        /// <param name="errorHandler">
-        ///     An optional error handling operation. Handler will be passed the request that failed along
-        ///     with the corresponding <see cref="FaultException{OrganizationServiceFault}" />
-        /// </param>
-        /// <returns>A collection of type <see cref="OrganizationResponse" /> containing the responses to each executed request</returns>
-        /// <exception cref="AggregateException">
-        ///     Callers should catch <see cref="AggregateException" /> to handle exceptions raised
-        ///     by individual requests
-        /// </exception>
-        public IEnumerable<OrganizationResponse> Execute(IEnumerable<OrganizationRequest> requests,
-            OrganizationServiceProxyOptions options,
-            Action<OrganizationRequest, FaultException<OrganizationServiceFault>> errorHandler = null)
+        /// <param name="options">The configurable options for the parallel <see cref="OrganizationServiceProxy"/> requests</param>
+        /// <param name="errorHandler">An optional error handling operation. Handler will be passed the request that failed along with the corresponding <see cref="FaultException{OrganizationServiceFault}"/></param>        
+        /// <returns>A collection of type <see cref="OrganizationResponse"/> containing the responses to each executed request</returns>
+        /// <exception cref="AggregateException">Callers should catch <see cref="AggregateException"/> to handle exceptions raised by individual requests</exception>
+        public IEnumerable<OrganizationResponse> Execute(IEnumerable<OrganizationRequest> requests, OrganizationServiceProxyOptions options, Action<OrganizationRequest, FaultException<OrganizationServiceFault>> errorHandler = null)
         {
-            return ExecuteOperationWithResponse<OrganizationRequest, OrganizationResponse>(requests, options,
+            return this.ExecuteOperationWithResponse<OrganizationRequest, OrganizationResponse>(requests, options,
                 (request, context) =>
                 {
                     var response = context.Local.Execute(request);
 
                     //Collect the result from each iteration in this partition
                     context.Results.Add(response);
-                }, errorHandler);
+                },
+                errorHandler);
         }
 
         /// <summary>
-        ///     Performs data parallelism on a collection of type TRequest to execute <see cref="IOrganizationService" />.Execute()
-        ///     requests concurrently
+        /// Performs data parallelism on a collection of type TRequest to execute <see cref="IOrganizationService"/>.Execute() requests concurrently
         /// </summary>
-        /// <typeparam name="TRequest">The request type that derives from <see cref="OrganiztionRequest" /></typeparam>
-        /// <typeparam name="TResponse">The response type that derives from <see cref="OrganizationResponse" /></typeparam>
+        /// <typeparam name="TRequest">The request type that derives from <see cref="OrganiztionRequest"/></typeparam>
+        /// <typeparam name="TResponse">The response type that derives from <see cref="OrganizationResponse"/></typeparam>
         /// <param name="requests">The requests to be executed</param>
-        /// <param name="errorHandler">
-        ///     An optional error handling operation. Handler will be passed the request that failed along
-        ///     with the corresponding <see cref="FaultException{OrganizationServiceFault}" />
-        /// </param>
+        /// <param name="errorHandler">An optional error handling operation. Handler will be passed the request that failed along with the corresponding <see cref="FaultException{OrganizationServiceFault}"/></param>
         /// <returns>A collection of type TResponse containing the responses to each executed request</returns>
-        /// <exception cref="AggregateException">
-        ///     Callers should catch <see cref="AggregateException" /> to handle exceptions raised
-        ///     by individual requests
-        /// </exception>
-        public IEnumerable<TResponse> Execute<TRequest, TResponse>(IEnumerable<TRequest> requests,
-            Action<TRequest, FaultException<OrganizationServiceFault>> errorHandler = null)
-            where TRequest : OrganizationRequest where TResponse : OrganizationResponse
+        /// <exception cref="AggregateException">Callers should catch <see cref="AggregateException"/> to handle exceptions raised by individual requests</exception>
+        public IEnumerable<TResponse> Execute<TRequest, TResponse>(IEnumerable<TRequest> requests, Action<TRequest, FaultException<OrganizationServiceFault>> errorHandler = null)
+            where TRequest : OrganizationRequest
+            where TResponse : OrganizationResponse
         {
-            return Execute<TRequest, TResponse>(requests, new OrganizationServiceProxyOptions(), errorHandler);
+            return this.Execute<TRequest, TResponse>(requests, new OrganizationServiceProxyOptions(), errorHandler);
         }
 
         /// <summary>
-        ///     Performs data parallelism on a collection of type TRequest to execute <see cref="IOrganizationService" />.Execute()
-        ///     requests concurrently
+        /// Performs data parallelism on a collection of type TRequest to execute <see cref="IOrganizationService"/>.Execute() requests concurrently
         /// </summary>
-        /// <typeparam name="TRequest">The request type that derives from <see cref="OrganiztionRequest" /></typeparam>
-        /// <typeparam name="TResponse">The response type that derives from <see cref="OrganizationResponse" /></typeparam>
+        /// <typeparam name="TRequest">The request type that derives from <see cref="OrganiztionRequest"/></typeparam>
+        /// <typeparam name="TResponse">The response type that derives from <see cref="OrganizationResponse"/></typeparam>
         /// <param name="requests">The requests to be executed</param>
-        /// <param name="options">The configurable options for the parallel <see cref="OrganizationServiceProxy" /> requests</param>
-        /// <param name="errorHandler">
-        ///     An optional error handling operation. Handler will be passed the request that failed along
-        ///     with the corresponding <see cref="FaultException{OrganizationServiceFault}" />
-        /// </param>
+        /// <param name="options">The configurable options for the parallel <see cref="OrganizationServiceProxy"/> requests</param>
+        /// <param name="errorHandler">An optional error handling operation. Handler will be passed the request that failed along with the corresponding <see cref="FaultException{OrganizationServiceFault}"/></param>
         /// <returns>A collection of type TResponse containing the responses to each executed request</returns>
-        /// <exception cref="AggregateException">
-        ///     Callers should catch <see cref="AggregateException" /> to handle exceptions raised
-        ///     by individual requests
-        /// </exception>
-        public IEnumerable<TResponse> Execute<TRequest, TResponse>(IEnumerable<TRequest> requests,
-            OrganizationServiceProxyOptions options,
-            Action<TRequest, FaultException<OrganizationServiceFault>> errorHandler = null)
-            where TRequest : OrganizationRequest where TResponse : OrganizationResponse
+        /// <exception cref="AggregateException">Callers should catch <see cref="AggregateException"/> to handle exceptions raised by individual requests</exception>
+        public IEnumerable<TResponse> Execute<TRequest, TResponse>(IEnumerable<TRequest> requests, OrganizationServiceProxyOptions options, Action<TRequest, FaultException<OrganizationServiceFault>> errorHandler = null)
+            where TRequest : OrganizationRequest
+            where TResponse : OrganizationResponse
         {
-            return ExecuteOperationWithResponse<TRequest, TResponse>(requests, options, (request, context) =>
-            {
-                var response = (TResponse) context.Local.Execute(request);
+            return this.ExecuteOperationWithResponse<TRequest, TResponse>(requests, options,
+                (request, context) =>
+                {
+                    var response = (TResponse)context.Local.Execute(request);
 
-                context.Results.Add(response);
-            }, errorHandler);
+                    context.Results.Add(response);
+                },
+                errorHandler);
         }
 
         #endregion
@@ -1567,37 +1020,33 @@ namespace Microsoft.Pfe.Xrm
         #region Core Parallel Execution Methods <TRequest> & <TRequest, TResponse>
 
         /// <summary>
-        ///     Core implementation of the parallel pattern for service operations that do not return a response (i.e.
-        ///     Update/Delete/Associate/Disassociate)
+        /// Core implementation of the parallel pattern for service operations that do not return a response (i.e. Update/Delete/Associate/Disassociate)
         /// </summary>
         /// <typeparam name="TRequest">The type being submitted in the service operation request</typeparam>
         /// <param name="requests">The collection of requests to be submitted</param>
-        /// <param name="options">The configurable options for the <see cref="OrganizationServiceProxy" /> requests</param>
+        /// <param name="options">The configurable options for the <see cref="OrganizationServiceProxy"/> requests</param>
         /// <param name="operation">The specific operation being executed</param>
-        /// <param name="errorHandler">
-        ///     The error handling operation. Handler will be passed the request that failed along with the
-        ///     corresponding <see cref="FaultException{OrganizationServiceFault}" />
-        /// </param>
+        /// <param name="errorHandler">The error handling operation. Handler will be passed the request that failed along with the corresponding <see cref="FaultException{OrganizationServiceFault}"/></param>
         private void ExecuteOperation<TRequest>(IEnumerable<TRequest> requests, OrganizationServiceProxyOptions options,
-            Action<TRequest, ManagedTokenOrganizationServiceProxy> operation,
-            Action<TRequest, FaultException<OrganizationServiceFault>> errorHandler)
+            Action<TRequest, ManagedTokenOrganizationServiceProxy> operation, Action<TRequest, FaultException<OrganizationServiceFault>> errorHandler)
         {
             var allFailures = new ConcurrentBag<ParallelOrganizationOperationFailure<TRequest>>();
-
+            
             // Inline method for initializing a new organization service channel
             Func<ManagedTokenOrganizationServiceProxy> proxyInit = () =>
-            {
-                var proxy = ServiceManager.GetProxy();
-                proxy.SetProxyOptions(options);
+                {
+                    var proxy = this.ServiceManager.GetProxy();
+                    proxy.SetProxyOptions(options);
 
-                return proxy;
-            };
-
+                    return proxy;
+                };
+            
             using (var threadLocalProxy = new ThreadLocal<ManagedTokenOrganizationServiceProxy>(proxyInit, true))
             {
                 try
                 {
-                    Parallel.ForEach(requests, new ParallelOptions {MaxDegreeOfParallelism = MaxDegreeOfParallelism},
+                    Parallel.ForEach<TRequest, ParallelOrganizationOperationContext<TRequest, bool>>(requests,
+                        new ParallelOptions() { MaxDegreeOfParallelism = this.MaxDegreeOfParallelism },
                         () => new ParallelOrganizationOperationContext<TRequest, bool>(),
                         (request, loopState, index, context) =>
                         {
@@ -1609,13 +1058,18 @@ namespace Microsoft.Pfe.Xrm
                             {
                                 // Track faults locally                                
                                 if (errorHandler != null)
-                                    context.Failures.Add(
-                                        new ParallelOrganizationOperationFailure<TRequest>(request, fault));
-                                else throw;
+                                {
+                                    context.Failures.Add(new ParallelOrganizationOperationFailure<TRequest>(request, fault));
+                                }
+                                else
+                                {
+                                    throw;
+                                }
                             }
 
                             return context;
-                        }, context =>
+                        },
+                        (context) =>
                         {
                             // Join faults together
                             Array.ForEach(context.Failures.ToArray(), f => allFailures.Add(f));
@@ -1629,48 +1083,48 @@ namespace Microsoft.Pfe.Xrm
 
             // Handle faults
             if (errorHandler != null)
-                foreach (var failure in allFailures) errorHandler(failure.Request, failure.Exception);
+            {
+                foreach (var failure in allFailures)
+                {
+                    errorHandler(failure.Request, failure.Exception);                    
+                }
+            }
         }
 
         /// <summary>
-        ///     Core implementation of the parallel pattern for service operations that should collect responses to each request
+        /// Core implementation of the parallel pattern for service operations that should collect responses to each request
         /// </summary>
         /// <typeparam name="TRequest">The type being submitted in the service operation request</typeparam>
         /// <typeparam name="TResponse">The response type collected from each request and returned</typeparam>
         /// <param name="requests">The collection of requests to be submitted</param>
         /// <param name="options">The configurable options for the OrganizationServiceProxy requests</param>
         /// <param name="coreOperation">The specific operation being executed</param>
-        /// <param name="errorHandler">
-        ///     The error handling operation. Handler will be passed the request that failed along with the
-        ///     corresponding <see cref="FaultException{OrganizationServiceFault}" />
-        /// </param>
+        /// <param name="errorHandler">The error handling operation. Handler will be passed the request that failed along with the corresponding <see cref="FaultException{OrganizationServiceFault}"/></param>
         /// <returns>A collection of specified response types from service operation requests</returns>
         /// <remarks>
-        ///     IMPORTANT!! When defining the core operation, be sure to add responses you wish to collect via
-        ///     proxy.Results.Add(TResponse item);
+        /// IMPORTANT!! When defining the core operation, be sure to add responses you wish to collect via proxy.Results.Add(TResponse item);
         /// </remarks>
-        private IEnumerable<TResponse> ExecuteOperationWithResponse<TRequest, TResponse>(IEnumerable<TRequest> requests,
-            OrganizationServiceProxyOptions options,
-            Action<TRequest, ParallelOrganizationOperationContext<TRequest, TResponse>> coreOperation,
-            Action<TRequest, FaultException<OrganizationServiceFault>> errorHandler)
+        private IEnumerable<TResponse> ExecuteOperationWithResponse<TRequest, TResponse>(IEnumerable<TRequest> requests, OrganizationServiceProxyOptions options,
+            Action<TRequest, ParallelOrganizationOperationContext<TRequest, TResponse>> coreOperation, Action<TRequest, FaultException<OrganizationServiceFault>> errorHandler)
         {
             var allResponses = new ConcurrentBag<TResponse>();
             var allFailures = new ConcurrentBag<ParallelOrganizationOperationFailure<TRequest>>();
 
             // Inline method for initializing a new organization service channel
             Func<ManagedTokenOrganizationServiceProxy> proxyInit = () =>
-            {
-                var proxy = ServiceManager.GetProxy();
-                proxy.SetProxyOptions(options, ServiceManager.Cache);
+                {
+                    var proxy = this.ServiceManager.GetProxy();
+                    proxy.SetProxyOptions(options, ServiceManager.Cache);
 
-                return proxy;
-            };
-
+                    return proxy;
+                };
+            
             using (var threadLocalProxy = new ThreadLocal<ManagedTokenOrganizationServiceProxy>(proxyInit, true))
             {
                 try
                 {
-                    Parallel.ForEach(requests, new ParallelOptions {MaxDegreeOfParallelism = MaxDegreeOfParallelism},
+                    Parallel.ForEach<TRequest, ParallelOrganizationOperationContext<TRequest, TResponse>>(requests,
+                        new ParallelOptions() { MaxDegreeOfParallelism = this.MaxDegreeOfParallelism },
                         () => new ParallelOrganizationOperationContext<TRequest, TResponse>(threadLocalProxy.Value),
                         (request, loopState, index, context) =>
                         {
@@ -1682,17 +1136,22 @@ namespace Microsoft.Pfe.Xrm
                             {
                                 // Track faults locally
                                 if (errorHandler != null)
-                                    context.Failures.Add(
-                                        new ParallelOrganizationOperationFailure<TRequest>(request, fault));
-                                else throw;
+                                {
+                                    context.Failures.Add(new ParallelOrganizationOperationFailure<TRequest>(request, fault));
+                                }
+                                else
+                                {
+                                    throw;
+                                }
                             }
 
                             return context;
-                        }, context =>
-                        {
+                        },
+                        (context) =>
+                        {                                                                                                                
                             // Join results and faults together
                             Array.ForEach(context.Results.ToArray(), r => allResponses.Add(r));
-                            Array.ForEach(context.Failures.ToArray(), f => allFailures.Add(f));
+                            Array.ForEach(context.Failures.ToArray(), f => allFailures.Add(f));                            
 
                             // Remove temporary reference to ThreadLocal proxy
                             context.Local = null;
@@ -1706,21 +1165,42 @@ namespace Microsoft.Pfe.Xrm
 
             // Handle faults
             if (errorHandler != null)
-                foreach (var failure in allFailures) errorHandler(failure.Request, failure.Exception);
+            {
+                foreach(var failure in allFailures)
+                {
+                    errorHandler(failure.Request, failure.Exception);                  
+                }
+            }
 
             return allResponses;
         }
 
-        #endregion
+        #endregion 
     }
 
     /// <summary>
-    ///     Base class for executing concurrent requests for common <see cref="ServiceProxy{TService}" /> operations
+    /// Base class for executing concurrent requests for common <see cref="ServiceProxy{TService}"/> operations
     /// </summary>
     /// <typeparam name="T">The type of service manager Discovery or Organization</typeparam>
-    public abstract class ParallelServiceProxy<T> : ParallelServiceProxy where T : XrmServiceManagerBase
+    public abstract class ParallelServiceProxy<T> : ParallelServiceProxy
+        where T : XrmServiceManagerBase
     {
-        protected static object syncRoot = new object();
+        protected static object syncRoot = new Object();            
+
+        #region Constructor(s)
+
+        private ParallelServiceProxy() { throw new NotImplementedException(); }
+
+        protected ParallelServiceProxy(T serviceManager)
+            : this(serviceManager, ParallelServiceProxy.MaxDegreeOfParallelismDefault) { }
+
+        protected ParallelServiceProxy(T serviceManager, int maxDegreeOfParallelism)
+        {
+            this.ServiceManager = serviceManager;
+            this.MaxDegreeOfParallelism = maxDegreeOfParallelism;
+        }
+
+        #endregion
 
         #region Fields
 
@@ -1728,60 +1208,42 @@ namespace Microsoft.Pfe.Xrm
 
         #endregion
 
+        #region Properties
+        
+        protected T ServiceManager { get; set; }
+
+
+        /// <summary>
+        /// Override the default max degree of concurrency for the ParallelServiceProxy operations
+        /// </summary>
+        public int MaxDegreeOfParallelism
+        {
+            get
+            {
+                return this.maxDegreeOfParallelism;
+            }
+            set
+            {
+                ValidateDegreeOfParallelism(value);
+
+                this.maxDegreeOfParallelism = value;
+            }
+        }
+
+        #endregion
+
         #region Methods
 
         /// <summary>
-        ///     Ensures a valid max degree of parallelism argument before initiating the parallel process
+        /// Ensures a valid max degree of parallelism argument before initiating the parallel process
         /// </summary>
         /// <param name="maxDegree">The max degree of parallelism</param>
         /// <exception cref="ArgumentOutOfRangeException">An exception will be thrown if value is less than -1 or equal to 0.</exception>
         protected void ValidateDegreeOfParallelism(int maxDegree)
         {
-            if (maxDegree < -1 || maxDegree == 0)
-                throw new ArgumentOutOfRangeException(
-                    string.Format(
-                        "The provided MaxDegreeOfParallelism={0} is not valid. Argument must be -1 or greater than 0.",
-                        maxDegree));
-        }
-
-        #endregion
-
-        #region Constructor(s)
-
-        private ParallelServiceProxy()
-        {
-            throw new NotImplementedException();
-        }
-
-        protected ParallelServiceProxy(T serviceManager) : 
-            this(serviceManager, MaxDegreeOfParallelismDefault)
-        {
-        }
-
-        protected ParallelServiceProxy(T serviceManager, int maxDegreeOfParallelism)
-        {
-            ServiceManager = serviceManager;
-            MaxDegreeOfParallelism = maxDegreeOfParallelism;
-        }
-
-        #endregion
-
-        #region Properties
-
-        protected T ServiceManager { get; set; }
-
-        /// <summary>
-        ///     Override the default max degree of concurrency for the ParallelServiceProxy operations
-        /// </summary>
-        public int MaxDegreeOfParallelism
-        {
-            get => maxDegreeOfParallelism;
-            set
-            {
-                ValidateDegreeOfParallelism(value);
-
-                maxDegreeOfParallelism = value;
-            }
+            if (maxDegree < -1
+                || maxDegree == 0)
+                throw new ArgumentOutOfRangeException(string.Format("The provided MaxDegreeOfParallelism={0} is not valid. Argument must be -1 or greater than 0.", maxDegree));
         }
 
         #endregion

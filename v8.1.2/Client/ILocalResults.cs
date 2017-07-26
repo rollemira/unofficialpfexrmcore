@@ -12,12 +12,18 @@
   or lawsuits, including attorneys’ fees, that arise or result from the use or distribution of the Sample Code.
 
  =================================================================================================================================*/
-
-using System.Collections.Generic;
-
 namespace Microsoft.Pfe.Xrm
 {
-    public interface ILocalResults<TResult, TFailure> where TFailure : IParallelOperationFailure
+    using System;
+    using System.Collections.Generic;
+    using System.Linq;
+    using System.ServiceModel;
+    using System.Text;
+
+    using Microsoft.Xrm.Sdk;
+
+    public interface ILocalResults<TResult, TFailure>
+        where TFailure : IParallelOperationFailure
     {
         IList<TResult> Results { get; }
         IList<TFailure> Failures { get; }

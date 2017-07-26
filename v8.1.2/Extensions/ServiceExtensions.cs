@@ -13,25 +13,29 @@
 
  =================================================================================================================================*/
 
-using System;
-using Microsoft.Pfe.Xrm.Caching;
-using Microsoft.Xrm.Sdk;
-using Microsoft.Xrm.Sdk.Client;
-using Microsoft.Xrm.Sdk.Query;
-using Newtonsoft.Json;
-
 namespace Microsoft.Pfe.Xrm
 {
+    using System;
+    using System.Collections.Generic;
+    using System.Linq;
+    using System.Text;
+    using Microsoft.Pfe.Xrm.Caching;
+    using Microsoft.Xrm.Sdk;
+    using Microsoft.Xrm.Sdk.Client;
+    using Microsoft.Xrm.Sdk.Query;
+    using System.Xml.Linq;
+
     public static class DiscoveryServiceExtensions
     {
         /// <summary>
-        ///     Helper method for assigning common proxy-specific settings such as channel timeout
+        /// Helper method for assigning common proxy-specific settings such as channel timeout
         /// </summary>
         /// <param name="proxy">The service proxy</param>
         /// <param name="options">The options to configure on the service proxy</param>
         public static void SetProxyOptions(this DiscoveryServiceProxy proxy, DiscoveryServiceProxyOptions options)
         {
-            if (!options.Timeout.Equals(TimeSpan.Zero) && options.Timeout > TimeSpan.Zero)
+            if (!options.Timeout.Equals(TimeSpan.Zero)
+                && options.Timeout > TimeSpan.Zero)
                 proxy.Timeout = options.Timeout;
         }
     }
@@ -45,8 +49,7 @@ namespace Microsoft.Pfe.Xrm
 #pragma warning restore 649
 
         /// <summary>
-        ///     Helper method for assigning common proxy-specific settings for impersonation, early-bound types, and channel
-        ///     timeout
+        /// Helper method for assigning common proxy-specific settings for impersonation, early-bound types, and channel timeout
         /// </summary>
         /// <param name="proxy">The service proxy</param>
         /// <param name="options">The options to configure on the service proxy</param>
@@ -68,240 +71,194 @@ namespace Microsoft.Pfe.Xrm
 
             if (options.ShouldEnableProxyTypes) proxy.EnableProxyTypes();
 
-            if (!options.Timeout.Equals(TimeSpan.Zero) && options.Timeout > TimeSpan.Zero)
+            if (options.ShouldEnableProxyTypes)
+                proxy.EnableProxyTypes();
+            
+            if (!options.Timeout.Equals(TimeSpan.Zero)
+                && options.Timeout > TimeSpan.Zero)
                 proxy.Timeout = options.Timeout;
 
             _cache = cache;
         }
 
         /// <summary>
-        ///     Performs an iterative series of RetrieveMultiple requests in order to obtain all pages of results
+        /// Performs an iterative series of RetrieveMultiple requests in order to obtain all pages of results
         /// </summary>
         /// <param name="service">The current IOrganizationService instance</param>
         /// <param name="query">The query to be executed</param>
         /// <param name="shouldRetrieveAllPages">True = perform iterative paged query requests, otherwise return first page only</param>
         /// <param name="pagedOperation">An operation to perform on each page of results as it's retrieved</param>
-        /// <returns>
-        ///     An EntityCollection containing the results of the query. Details reflect the last page retrieved (e.g.
-        ///     MoreRecords, PagingCookie, etc.)
-        /// </returns>
+        /// <returns>An EntityCollection containing the results of the query. Details reflect the last page retrieved (e.g. MoreRecords, PagingCookie, etc.)</returns>
         /// <remarks>
-        ///     CRM limits query response to paged result sets of 5,000. This method encapsulates the logic for performing
-        ///     subsequent
-        ///     query requests so that all results can be retrieved.
-        ///     If retrieving all pages, max result count is essentially unbound - Int64.MaxValue: 9,223,372,036,854,775,807
+        /// CRM limits query response to paged result sets of 5,000. This method encapsulates the logic for performing subsequent 
+        /// query requests so that all results can be retrieved.
+        /// 
+        /// If retrieving all pages, max result count is essentially unbound - Int64.MaxValue: 9,223,372,036,854,775,807
         /// </remarks>
-        public static EntityCollection RetrieveMultiple(this IOrganizationService service, QueryBase query,
-            bool shouldRetrieveAllPages, Action<EntityCollection> pagedOperation = null)
+        public static EntityCollection RetrieveMultiple(this IOrganizationService service, QueryBase query, bool shouldRetrieveAllPages, Action<EntityCollection> pagedOperation = null)
         {
-            return service.RetrieveMultiple(query, shouldRetrieveAllPages, long.MaxValue, pagedOperation);
+            return service.RetrieveMultiple(query, shouldRetrieveAllPages, Int64.MaxValue, null, null, pagedOperation);
         }
 
         /// <summary>
-        ///     Performs an iterative series of RetrieveMultiple requests in order to obtain all pages of results
+        /// Performs an iterative series of RetrieveMultiple requests in order to obtain all pages of results
         /// </summary>
         /// <param name="service">The current IOrganizationService instance</param>
         /// <param name="query">The query to be executed</param>
         /// <param name="shouldRetrieveAllPages">True = perform iterative paged query requests, otherwise return first page only</param>
-        /// <param name="slidingExpiration">The sliding cache expiration</param>
+        /// <param name="slidingExpiration">The cache sliding expiration (If an ICachesStragegy Chosen <see cref="CacheStrategies"/>)</param>
         /// <param name="pagedOperation">An operation to perform on each page of results as it's retrieved</param>
-        /// <returns>
-        ///     An EntityCollection containing the results of the query. Details reflect the last page retrieved (e.g.
-        ///     MoreRecords, PagingCookie, etc.)
-        /// </returns>
+        /// <returns>An EntityCollection containing the results of the query. Details reflect the last page retrieved (e.g. MoreRecords, PagingCookie, etc.)</returns>
         /// <remarks>
-        ///     CRM limits query response to paged result sets of 5,000. This method encapsulates the logic for performing
-        ///     subsequent
-        ///     query requests so that all results can be retrieved.
-        ///     If retrieving all pages, max result count is essentially unbound - Int64.MaxValue: 9,223,372,036,854,775,807
+        /// CRM limits query response to paged result sets of 5,000. This method encapsulates the logic for performing subsequent 
+        /// query requests so that all results can be retrieved.
+        /// 
+        /// If retrieving all pages, max result count is essentially unbound - Int64.MaxValue: 9,223,372,036,854,775,807
         /// </remarks>
-        public static EntityCollection RetrieveMultiple(this IOrganizationService service, QueryBase query,
-            bool shouldRetrieveAllPages, TimeSpan slidingExpiration, Action<EntityCollection> pagedOperation = null)
+        public static EntityCollection RetrieveMultiple(this IOrganizationService service, QueryBase query, bool shouldRetrieveAllPages, TimeSpan? slidingExpiration = null, Action<EntityCollection> pagedOperation = null)
         {
-            return service.RetrieveMultiple(query, shouldRetrieveAllPages, long.MaxValue, pagedOperation,
-                slidingExpiration);
+            return service.RetrieveMultiple(query, shouldRetrieveAllPages, Int64.MaxValue, slidingExpiration, null, pagedOperation);
         }
 
         /// <summary>
-        ///     Performs an iterative series of RetrieveMultiple requests in order to obtain all pages of results
+        /// Performs an iterative series of RetrieveMultiple requests in order to obtain all pages of results
         /// </summary>
         /// <param name="service">The current IOrganizationService instance</param>
         /// <param name="query">The query to be executed</param>
         /// <param name="shouldRetrieveAllPages">True = perform iterative paged query requests, otherwise return first page only</param>
-        /// <param name="absoluteExpirationUtc">The cache absolute expiration (Should always be in UTC)</param>
+        /// <param name="absoluteExpirationUtc">The cache absolute expiration in UTC (If an ICachesStragegy Chosen <see cref="CacheStrategies"/>)</param>
         /// <param name="pagedOperation">An operation to perform on each page of results as it's retrieved</param>
-        /// <returns>
-        ///     An EntityCollection containing the results of the query. Details reflect the last page retrieved (e.g.
-        ///     MoreRecords, PagingCookie, etc.)
-        /// </returns>
+        /// <returns>An EntityCollection containing the results of the query. Details reflect the last page retrieved (e.g. MoreRecords, PagingCookie, etc.)</returns>
         /// <remarks>
-        ///     CRM limits query response to paged result sets of 5,000. This method encapsulates the logic for performing
-        ///     subsequent
-        ///     query requests so that all results can be retrieved.
-        ///     If retrieving all pages, max result count is essentially unbound - Int64.MaxValue: 9,223,372,036,854,775,807
+        /// CRM limits query response to paged result sets of 5,000. This method encapsulates the logic for performing subsequent 
+        /// query requests so that all results can be retrieved.
+        /// 
+        /// If retrieving all pages, max result count is essentially unbound - Int64.MaxValue: 9,223,372,036,854,775,807
         /// </remarks>
-        public static EntityCollection RetrieveMultiple(this IOrganizationService service, QueryBase query,
-            bool shouldRetrieveAllPages, DateTime absoluteExpirationUtc, Action<EntityCollection> pagedOperation = null)
+        public static EntityCollection RetrieveMultiple(this IOrganizationService service, QueryBase query, bool shouldRetrieveAllPages, DateTime? absoluteExpirationUtc = null, Action<EntityCollection> pagedOperation = null)
         {
-            return service.RetrieveMultiple(query, shouldRetrieveAllPages, long.MaxValue, pagedOperation, null,
-                absoluteExpirationUtc);
+            return service.RetrieveMultiple(query, shouldRetrieveAllPages, Int64.MaxValue, null, absoluteExpirationUtc, pagedOperation);
         }
 
         /// <summary>
-        ///     Performs an iterative series of RetrieveMultiple requests in order to obtain all pages of results
+        /// Performs an iterative series of RetrieveMultiple requests in order to obtain all pages of results
         /// </summary>
         /// <param name="service">The current IOrganizationService instance</param>
         /// <param name="query">The query to be executed</param>
         /// <param name="shouldRetrieveAllPages">True = perform iterative paged query requests, otherwise return first page only</param>
-        /// <param name="slidingExpiration">The sliding cache expiration</param>
-        /// <param name="absoluteExpirationUtc">The cache absolute expiration (Should always be in UTC)</param>
+        /// <param name="slidingExpiration">The cache sliding expiration (If an ICachesStragegy Chosen <see cref="CacheStrategies"/>)</param>
+        /// <param name="absoluteExpirationUtc">The cache absolute expiration in UTC (If an ICachesStragegy Chosen <see cref="CacheStrategies"/>)</param>
         /// <param name="pagedOperation">An operation to perform on each page of results as it's retrieved</param>
-        /// <returns>
-        ///     An EntityCollection containing the results of the query. Details reflect the last page retrieved (e.g.
-        ///     MoreRecords, PagingCookie, etc.)
-        /// </returns>
+        /// <returns>An EntityCollection containing the results of the query. Details reflect the last page retrieved (e.g. MoreRecords, PagingCookie, etc.)</returns>
         /// <remarks>
-        ///     CRM limits query response to paged result sets of 5,000. This method encapsulates the logic for performing
-        ///     subsequent
-        ///     query requests so that all results can be retrieved.
-        ///     If retrieving all pages, max result count is essentially unbound - Int64.MaxValue: 9,223,372,036,854,775,807
+        /// CRM limits query response to paged result sets of 5,000. This method encapsulates the logic for performing subsequent 
+        /// query requests so that all results can be retrieved.
+        /// 
+        /// If retrieving all pages, max result count is essentially unbound - Int64.MaxValue: 9,223,372,036,854,775,807
         /// </remarks>
-        internal static EntityCollection RetrieveMultiple(this IOrganizationService service, QueryBase query,
-            bool shouldRetrieveAllPages, TimeSpan? slidingExpiration, DateTime? absoluteExpirationUtc, Action<EntityCollection> pagedOperation = null)
+        internal static EntityCollection RetrieveMultiple(this IOrganizationService service, QueryBase query, bool shouldRetrieveAllPages, TimeSpan? slidingExpiration = null, DateTime? absoluteExpirationUtc = null, Action<EntityCollection> pagedOperation = null)
         {
-            return service.RetrieveMultiple(query, shouldRetrieveAllPages, long.MaxValue, pagedOperation, slidingExpiration,
-                absoluteExpirationUtc);
+            return service.RetrieveMultiple(query, shouldRetrieveAllPages, Int64.MaxValue, slidingExpiration, absoluteExpirationUtc, pagedOperation);
         }
 
         /// <summary>
-        ///     Perform an iterative series of RetrieveMultiple requests in order to obtain all results up to the provided maximum
-        ///     result count
+        /// Perform an iterative series of RetrieveMultiple requests in order to obtain all results up to the provided maximum result count
         /// </summary>
         /// <param name="service">The current IOrganizationService instance</param>
         /// <param name="query">The QueryExpression query to be executed</param>
-        /// <param name="maxResultCount">
-        ///     An upper limit on the maximum number of entity records that should be retrieved as the
-        ///     query results - useful when the total size of result set is unknown and size may cause OutOfMemoryException
-        /// </param>
-        /// <param name="slidingExpiration">The sliding cache expiration</param>
+        /// <param name="maxResultCount">An upper limit on the maximum number of entity records that should be retrieved as the query results - useful when the total size of result set is unknown and size may cause <see cref="OutOfMemoryException"/></param>
         /// <param name="pagedOperation">An operation to perform on each page of results as it's retrieved</param>
-        /// <returns>
-        ///     An EntityCollection containing the results of the query. Details reflect the last page retrieved (e.g.
-        ///     MoreRecords, PagingCookie, etc.)
-        /// </returns>
+        /// <returns>An EntityCollection containing the results of the query. Details reflect the last page retrieved (e.g. MoreRecords, PagingCookie, etc.)</returns>
         /// <remarks>
-        ///     CRM limits query response to paged result sets of 5,000. This method encapsulates the logic for performing
-        ///     subsequent
-        ///     query requests so that all results can be retrieved.
-        ///     Inherently retrieves all pages up to the max result count.  If max result count is less than initial page size,
-        ///     then page size is adjusted down to honor the max result count
+        /// CRM limits query response to paged result sets of 5,000. This method encapsulates the logic for performing subsequent 
+        /// query requests so that all results can be retrieved.
+        /// 
+        /// Inherently retrieves all pages up to the max result count.  If max result count is less than initial page size, then page size is adjusted down to honor the max result count
         /// </remarks>
-        public static EntityCollection RetrieveMultiple(this IOrganizationService service, QueryBase query,
-            int maxResultCount, TimeSpan slidingExpiration, Action<EntityCollection> pagedOperation = null)
+        public static EntityCollection RetrieveMultiple(this IOrganizationService service, QueryBase query, int maxResultCount, Action<EntityCollection> pagedOperation = null)
         {
-            return service.RetrieveMultiple(query, true, maxResultCount, pagedOperation, slidingExpiration);
+            return service.RetrieveMultiple(query, true, maxResultCount, null, null, pagedOperation);
         }
 
         /// <summary>
-        ///     Perform an iterative series of RetrieveMultiple requests in order to obtain all results up to the provided maximum
-        ///     result count
+        /// Perform an iterative series of RetrieveMultiple requests in order to obtain all results up to the provided maximum result count
         /// </summary>
         /// <param name="service">The current IOrganizationService instance</param>
         /// <param name="query">The QueryExpression query to be executed</param>
-        /// <param name="maxResultCount">
-        ///     An upper limit on the maximum number of entity records that should be retrieved as the
-        ///     query results - useful when the total size of result set is unknown and size may cause OutOfMemoryException
-        /// </param>
-        /// <param name="absoluteExpirationUtc">The cache absolute expiration (Should always be in UTC)</param>
+        /// <param name="maxResultCount">An upper limit on the maximum number of entity records that should be retrieved as the query results - useful when the total size of result set is unknown and size may cause <see cref="OutOfMemoryException"/></param>
+        /// <param name="slidingExpiration">The cache sliding expiration (If an ICachesStragegy Chosen <see cref="CacheStrategies"/>)</param>
         /// <param name="pagedOperation">An operation to perform on each page of results as it's retrieved</param>
-        /// <returns>
-        ///     An EntityCollection containing the results of the query. Details reflect the last page retrieved (e.g.
-        ///     MoreRecords, PagingCookie, etc.)
-        /// </returns>
+        /// <returns>An EntityCollection containing the results of the query. Details reflect the last page retrieved (e.g. MoreRecords, PagingCookie, etc.)</returns>
         /// <remarks>
-        ///     CRM limits query response to paged result sets of 5,000. This method encapsulates the logic for performing
-        ///     subsequent
-        ///     query requests so that all results can be retrieved.
-        ///     Inherently retrieves all pages up to the max result count.  If max result count is less than initial page size,
-        ///     then page size is adjusted down to honor the max result count
+        /// CRM limits query response to paged result sets of 5,000. This method encapsulates the logic for performing subsequent 
+        /// query requests so that all results can be retrieved.
+        /// 
+        /// Inherently retrieves all pages up to the max result count.  If max result count is less than initial page size, then page size is adjusted down to honor the max result count
         /// </remarks>
-        public static EntityCollection RetrieveMultiple(this IOrganizationService service, QueryBase query,
-            int maxResultCount, DateTime absoluteExpirationUtc, Action<EntityCollection> pagedOperation = null)
+        public static EntityCollection RetrieveMultiple(this IOrganizationService service, QueryBase query, int maxResultCount, TimeSpan? slidingExpiration = null, Action<EntityCollection> pagedOperation = null)
         {
-            return service.RetrieveMultiple(query, true, maxResultCount, pagedOperation, null, absoluteExpirationUtc);
+            return service.RetrieveMultiple(query, true, maxResultCount, slidingExpiration, null, pagedOperation);
         }
 
         /// <summary>
-        ///     Perform an iterative series of RetrieveMultiple requests in order to obtain all results up to the provided maximum
-        ///     result count
+        /// Perform an iterative series of RetrieveMultiple requests in order to obtain all results up to the provided maximum result count
         /// </summary>
         /// <param name="service">The current IOrganizationService instance</param>
         /// <param name="query">The QueryExpression query to be executed</param>
-        /// <param name="maxResultCount">
-        ///     An upper limit on the maximum number of entity records that should be retrieved as the
-        ///     query results - useful when the total size of result set is unknown and size may cause OutOfMemoryException
-        /// </param>
+        /// <param name="maxResultCount">An upper limit on the maximum number of entity records that should be retrieved as the query results - useful when the total size of result set is unknown and size may cause <see cref="OutOfMemoryException"/></param>
+        /// <param name="absoluteExpirationUtc">The cache absolute expiration in UTC (If an ICachesStragegy Chosen <see cref="CacheStrategies"/>)</param>
         /// <param name="pagedOperation">An operation to perform on each page of results as it's retrieved</param>
-        /// <returns>
-        ///     An EntityCollection containing the results of the query. Details reflect the last page retrieved (e.g.
-        ///     MoreRecords, PagingCookie, etc.)
-        /// </returns>
+        /// <returns>An EntityCollection containing the results of the query. Details reflect the last page retrieved (e.g. MoreRecords, PagingCookie, etc.)</returns>
         /// <remarks>
-        ///     CRM limits query response to paged result sets of 5,000. This method encapsulates the logic for performing
-        ///     subsequent
-        ///     query requests so that all results can be retrieved.
-        ///     Inherently retrieves all pages up to the max result count.  If max result count is less than initial page size,
-        ///     then page size is adjusted down to honor the max result count
+        /// CRM limits query response to paged result sets of 5,000. This method encapsulates the logic for performing subsequent 
+        /// query requests so that all results can be retrieved.
+        /// 
+        /// Inherently retrieves all pages up to the max result count.  If max result count is less than initial page size, then page size is adjusted down to honor the max result count
         /// </remarks>
-        public static EntityCollection RetrieveMultiple(this IOrganizationService service, QueryBase query,
-            int maxResultCount, Action<EntityCollection> pagedOperation = null)
+        public static EntityCollection RetrieveMultiple(this IOrganizationService service, QueryBase query, int maxResultCount, DateTime? absoluteExpirationUtc = null, Action<EntityCollection> pagedOperation = null)
         {
-            return service.RetrieveMultiple(query, true, maxResultCount, pagedOperation);
+            return service.RetrieveMultiple(query, true, maxResultCount, null, absoluteExpirationUtc, pagedOperation);
         }
 
         /// <summary>
-        ///     Performs an iterative series of RetrieveMultiple requests in order to obtain all pages of results up to the
-        ///     provided maximum result count
+        /// Performs an iterative series of RetrieveMultiple requests in order to obtain all pages of results up to the provided maximum result count
         /// </summary>
         /// <param name="service">The current IOrganizationService instance</param>
         /// <param name="query">The QueryExpression query to be executed</param>
         /// <param name="shouldRetrieveAllPages">True = perform iterative paged query requests, otherwise return first page only</param>
-        /// <param name="maxResultCount">
-        ///     An upper limit on the maximum number of entity records that should be retrieved as the
-        ///     query results - useful when the total size of result set is unknown and size may cause OutOfMemoryException
-        /// </param>
+        /// <param name="maxResultCount">An upper limit on the maximum number of entity records that should be retrieved as the query results - useful when the total size of result set is unknown and size may cause <see cref="OutOfMemoryException"/></param>
+        /// <param name="slidingExpiration">The cache sliding expiration (If an ICachesStragegy Chosen <see cref="CacheStrategies"/>)</param>
+        /// <param name="absoluteExpirationUtc">The cache absolute expiration in UTC (If an ICachesStragegy Chosen <see cref="CacheStrategies"/>)</param>
         /// <param name="pagedOperation">An operation to perform on each page of results as it's retrieved</param>
-        /// <param name="slidingExpiration">The sliding cache expiration</param>
-        /// <param name="absoluteExpirationUtc">The cache absolute expiration (Should always be in UTC)</param>
-        /// <returns>
-        ///     An EntityCollection containing the results of the query. Details reflect the last page retrieved (e.g.
-        ///     MoreRecords, PagingCookie, etc.)
-        /// </returns>
+        /// <returns>An EntityCollection containing the results of the query. Details reflect the last page retrieved (e.g. MoreRecords, PagingCookie, etc.)</returns>
         /// <remarks>
-        ///     CRM limits query response to paged result sets of 5,000. This method encapsulates the logic for performing
-        ///     subsequent
-        ///     query requests so that all results can be retrieved.
+        /// CRM limits query response to paged result sets of 5,000. This method encapsulates the logic for performing subsequent 
+        /// query requests so that all results can be retrieved.
         /// </remarks>
-        private static EntityCollection RetrieveMultiple(this IOrganizationService service, QueryBase query,
-            bool shouldRetrieveAllPages, long maxResultCount, Action<EntityCollection> pagedOperation,
-            TimeSpan? slidingExpiration = null, DateTime? absoluteExpirationUtc = null)
+        private static EntityCollection RetrieveMultiple(this IOrganizationService service, QueryBase query, bool shouldRetrieveAllPages, 
+            long maxResultCount, TimeSpan? slidingExpiration = null, DateTime? absoluteExpirationUtc = null,
+            Action<EntityCollection> pagedOperation = null)
         {
             if (query == null)
                 throw new ArgumentNullException("query", "Must supply a query for the RetrieveMultiple request");
             if (maxResultCount <= 0)
-                throw new ArgumentException("maxResultCount",
-                    "Max entity result count must be a value greater than zero.");
+                throw new ArgumentException("maxResultCount", "Max entity result count must be a value greater than zero.");
 
             var qe = query as QueryExpression;
 
             if (qe != null)
-                return RetrieveMultiple(service, qe, shouldRetrieveAllPages, maxResultCount, pagedOperation,
-                    slidingExpiration, absoluteExpirationUtc);
+            {
+                return service.RetrieveMultiple(qe, shouldRetrieveAllPages, maxResultCount, slidingExpiration, absoluteExpirationUtc, pagedOperation);
+            }
+            else
+            {
+                var fe = query as FetchExpression;
 
-            var fe = query as FetchExpression;
-            if (fe != null)
-                return RetrieveMultiple(service, fe, shouldRetrieveAllPages, maxResultCount, pagedOperation,
-                    slidingExpiration, absoluteExpirationUtc);
+                if (fe != null)
+                {
+                    return service.RetrieveMultiple(fe, shouldRetrieveAllPages, maxResultCount, slidingExpiration, absoluteExpirationUtc, pagedOperation);
+                }
+            }
 
             throw new ArgumentException("This method only handles FetchExpression and QueryExpression types.", "query");
         }
@@ -315,11 +272,11 @@ namespace Microsoft.Pfe.Xrm
         /// <param name="shouldRetrieveAllPages">True = perform iterative paged query requests, otherwise return first page only</param>
         /// <param name="maxResultCount">
         ///     An upper limit on the maximum number of entity records that should be retrieved as the
-        ///     query results - useful when the total size of result set is unknown and size may cause OutOfMemoryException
+        ///     query results - useful when the total size of result set is unknown and size may cause <see cref="OutOfMemoryException"/>
         /// </param>
+        /// <param name="slidingExpiration">The cache sliding expiration (If an ICachesStragegy Chosen <see cref="CacheStrategies"/>)</param>
+        /// <param name="absoluteExpirationUtc">The cache absolute expiration in UTC (If an ICachesStragegy Chosen <see cref="CacheStrategies"/>)</param>
         /// <param name="pagedOperation">An operation to perform on each page of results as it's retrieved</param>
-        /// <param name="slidingExpiration">The sliding cache expiration</param>
-        /// <param name="absoluteExpirationUtc">The cache absolute expiration (Should always be in UTC)</param>
         /// <returns>
         ///     An EntityCollection containing the results of the query. Details reflect the last page retrieved (e.g.
         ///     MoreRecords, PagingCookie, etc.)
@@ -330,8 +287,8 @@ namespace Microsoft.Pfe.Xrm
         ///     query requests so that all results can be retrieved.
         /// </remarks>
         private static EntityCollection RetrieveMultiple(this IOrganizationService service, QueryExpression query,
-            bool shouldRetrieveAllPages, long maxResultCount, Action<EntityCollection> pagedOperation,
-            TimeSpan? slidingExpiration = null, DateTime? absoluteExpirationUtc = null)
+            bool shouldRetrieveAllPages, long maxResultCount, TimeSpan? slidingExpiration = null, DateTime? absoluteExpirationUtc = null,
+            Action<EntityCollection> pagedOperation = null)
         {
             // Establish page info (only if TopCount not specified)
             if (query.TopCount == null)
@@ -366,7 +323,7 @@ namespace Microsoft.Pfe.Xrm
             {
                 EntityCollection page;
                 //generate cache key
-                var cacheKey = JsonConvert.SerializeObject(query);
+                var cacheKey = string.Format("QueryExpression[{0}]", query.ToJson());
                 //avoid thread collision
                 lock (_syncRoot)
                 {
@@ -426,11 +383,11 @@ namespace Microsoft.Pfe.Xrm
         /// <param name="shouldRetrieveAllPages">True = perform iterative paged query requests, otherwise return first page only</param>
         /// <param name="maxResultCount">
         ///     An upper limit on the maximum number of entity records that should be retrieved as the
-        ///     query results - useful when the total size of result set is unknown and size may cause OutOfMemoryException
+        ///     query results - useful when the total size of result set is unknown and size may cause <see cref="OutOfMemoryException"/>
         /// </param>
+        /// <param name="slidingExpiration">The cache sliding expiration (If an ICachesStragegy Chosen <see cref="CacheStrategies"/>)</param>
+        /// <param name="absoluteExpirationUtc">The cache absolute expiration in UTC (If an ICachesStragegy Chosen <see cref="CacheStrategies"/>)</param>
         /// <param name="pagedOperation">An operation to perform on each page of results as it's retrieved</param>
-        /// <param name="slidingExpiration">The sliding cache expiration</param>
-        /// <param name="absoluteExpirationUtc">The cache absolute expiration (Should always be in UTC)</param>
         /// <returns>
         ///     An EntityCollection containing the results of the query. Details reflect the last page retrieved (e.g.
         ///     MoreRecords, PagingCookie, etc.)
@@ -441,8 +398,8 @@ namespace Microsoft.Pfe.Xrm
         ///     query requests so that all results can be retrieved.
         /// </remarks>
         private static EntityCollection RetrieveMultiple(this IOrganizationService service, FetchExpression fetch,
-            bool shouldRetrieveAllPages, long maxResultCount, Action<EntityCollection> pagedOperation,
-            TimeSpan? slidingExpiration = null, DateTime? absoluteExpirationUtc = null)
+            bool shouldRetrieveAllPages, long maxResultCount, TimeSpan? slidingExpiration = null, DateTime? absoluteExpirationUtc = null,
+            Action<EntityCollection> pagedOperation = null)
         {
             var fetchXml = fetch.ToXml();
             var pageNumber = fetchXml.GetFetchXmlPageNumber();
@@ -465,7 +422,7 @@ namespace Microsoft.Pfe.Xrm
             {
                 EntityCollection page;
                 //generate cache key
-                var cacheKey = JsonConvert.SerializeObject(fetchXml.ToString());
+                var cacheKey = string.Format("FetchXML[{0}]", fetchXml);
                 //avoid thread collision
                 lock (_syncRoot)
                 {

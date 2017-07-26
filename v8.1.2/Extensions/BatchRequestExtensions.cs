@@ -13,14 +13,18 @@
 
  =================================================================================================================================*/
 
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using Microsoft.Xrm.Sdk;
-using Microsoft.Xrm.Sdk.Messages;
-
 namespace Microsoft.Pfe.Xrm
 {
+    using System;
+    using System.Collections.Generic;
+    using System.Linq;
+    using System.Text;
+
+    using Microsoft.Xrm.Sdk;
+    using Microsoft.Xrm.Sdk.Client;
+    using Microsoft.Xrm.Sdk.Messages;
+    using Microsoft.Crm.Sdk.Messages;
+
     public static class BatchRequestExtensions
     {
         public const int maxBatchSize = 1000;
@@ -29,44 +33,37 @@ namespace Microsoft.Pfe.Xrm
 
 
         /// <summary>
-        ///     Converts a collection of type <see cref="Entity" /> to <see cref="ExecuteMultipleRequest" /> batches of
-        ///     <see cref="CreateRequest" />
+        /// Converts a collection of type <see cref="Entity"/> to <see cref="ExecuteMultipleRequest"/> batches of <see cref="CreateRequest"/>
         /// </summary>
-        /// <param name="requests">The collection of entities to partition into batches as <see cref="CreateRequest" /></param>
+        /// <param name="requests">The collection of entities to partition into batches as <see cref="CreateRequest"/></param>
         /// <param name="batchSize">The size of each batch</param>
-        /// <returns>A keyed collection of <see cref="ExecuteMultipleRequest" />s representing the request batches</returns>
+        /// <returns>A keyed collection of <see cref="ExecuteMultipleRequest"/>s representing the request batches</returns>
         /// <remarks>
-        ///     Uses default settings of ContinueOnError = True, ReturnResposnes = True
+        /// Uses default settings of ContinueOnError = True, ReturnResposnes = True
         /// </remarks>
-        public static IDictionary<string, ExecuteMultipleRequest> AsCreateBatches(this IEnumerable<Entity> entities,
-            int batchSize)
+        public static IDictionary<string, ExecuteMultipleRequest> AsCreateBatches(this IEnumerable<Entity> entities, int batchSize)
         {
             return entities.AsCreateBatches(batchSize, continueSettingDefault, returnSettingDefault);
         }
 
         /// <summary>
-        ///     Converts a collection of type <see cref="Entity" /> to <see cref="ExecuteMultipleRequest" /> batches of
-        ///     <see cref="CreateRequest" />
+        /// Converts a collection of type <see cref="Entity"/> to <see cref="ExecuteMultipleRequest"/> batches of <see cref="CreateRequest"/>
         /// </summary>
-        /// <param name="requests">The collection of entities to partition into batches as <see cref="CreateRequest" /></param>
+        /// <param name="requests">The collection of entities to partition into batches as <see cref="CreateRequest"/></param>
         /// <param name="batchSize">The size of each batch</param>
-        /// <param name="continueOnError">
-        ///     True if each <see cref="ExecuteMultipleRequest" /> should continue processing when an
-        ///     <see cref="OrganizationServiceFault" /> is encountered
-        /// </param>
-        /// <param name="returnResponses">
-        ///     True if an <see cref="ExecuteMultipleResponse" /> should be returned after processing is
-        ///     complete
-        /// </param>
-        /// <returns>A keyed collection of type <see cref="ExecuteMultipleRequest" /> representing the request batches</returns>
-        public static IDictionary<string, ExecuteMultipleRequest> AsCreateBatches(this IEnumerable<Entity> entities,
-            int batchSize, bool continueOnError, bool returnResponses)
+        /// <param name="continueOnError">True if each <see cref="ExecuteMultipleRequest"/> should continue processing when an <see cref="OrganizationServiceFault"/> is encountered</param>
+        /// <param name="returnResponses">True if an <see cref="ExecuteMultipleResponse"/> should be returned after processing is complete</param>
+        /// <returns>A keyed collection of type <see cref="ExecuteMultipleRequest"/> representing the request batches</returns>
+        public static IDictionary<string, ExecuteMultipleRequest> AsCreateBatches(this IEnumerable<Entity> entities, int batchSize, bool continueOnError, bool returnResponses)
         {
             var requests = new List<CreateRequest>(entities.Count());
 
-            foreach (var entity in entities)
+            foreach (Entity entity in entities)
             {
-                var request = new CreateRequest {Target = entity};
+                var request = new CreateRequest()
+                {
+                    Target = entity
+                };
 
                 requests.Add(request);
             }
@@ -75,44 +72,37 @@ namespace Microsoft.Pfe.Xrm
         }
 
         /// <summary>
-        ///     Converts a collection of type <see cref="Entity" /> to <see cref="ExecuteMultipleRequest" /> batches of
-        ///     <see cref="UpdateRequest" />
+        /// Converts a collection of type <see cref="Entity"/> to <see cref="ExecuteMultipleRequest"/> batches of <see cref="UpdateRequest"/>
         /// </summary>
-        /// <param name="requests">The collection of entities to partition into batches as <see cref="UpdateRequest" /></param>
+        /// <param name="requests">The collection of entities to partition into batches as <see cref="UpdateRequest"/></param>
         /// <param name="batchSize">The size of each batch</param>
-        /// <returns>A keyed collection of <see cref="ExecuteMultipleRequest" />s representing the request batches</returns>
+        /// <returns>A keyed collection of <see cref="ExecuteMultipleRequest"/>s representing the request batches</returns>
         /// <remarks>
-        ///     Uses default settings of ContinueOnError = True, ReturnResposnes = True
+        /// Uses default settings of ContinueOnError = True, ReturnResposnes = True
         /// </remarks>
-        public static IDictionary<string, ExecuteMultipleRequest> AsUpdateBatches(this IEnumerable<Entity> entities,
-            int batchSize)
+        public static IDictionary<string, ExecuteMultipleRequest> AsUpdateBatches(this IEnumerable<Entity> entities, int batchSize)
         {
             return entities.AsUpdateBatches(batchSize, continueSettingDefault, returnSettingDefault);
         }
 
         /// <summary>
-        ///     Converts a collection of type <see cref="Entity" /> to <see cref="ExecuteMultipleRequest" /> batches of
-        ///     <see cref="UpdateRequest" />
+        /// Converts a collection of type <see cref="Entity"/> to <see cref="ExecuteMultipleRequest"/> batches of <see cref="UpdateRequest"/>
         /// </summary>
-        /// <param name="requests">The collection of entities to partition into batches as <see cref="UpdateRequest" /></param>
+        /// <param name="requests">The collection of entities to partition into batches as <see cref="UpdateRequest"/></param>
         /// <param name="batchSize">The size of each batch</param>
-        /// <param name="continueOnError">
-        ///     True if each <see cref="ExecuteMultipleRequest" /> should continue processing when an
-        ///     <see cref="OrganizationServiceFault" /> is encountered
-        /// </param>
-        /// <param name="returnResponses">
-        ///     True if an <see cref="ExecuteMultipleResponse" /> should be returned after processing is
-        ///     complete
-        /// </param>
-        /// <returns>A keyed collection of type <see cref="ExecuteMultipleRequest" /> representing the request batches</returns>
-        public static IDictionary<string, ExecuteMultipleRequest> AsUpdateBatches(this IEnumerable<Entity> entities,
-            int batchSize, bool continueOnError, bool returnResponses)
+        /// <param name="continueOnError">True if each <see cref="ExecuteMultipleRequest"/> should continue processing when an <see cref="OrganizationServiceFault"/> is encountered</param>
+        /// <param name="returnResponses">True if an <see cref="ExecuteMultipleResponse"/> should be returned after processing is complete</param>
+        /// <returns>A keyed collection of type <see cref="ExecuteMultipleRequest"/> representing the request batches</returns>
+        public static IDictionary<string, ExecuteMultipleRequest> AsUpdateBatches(this IEnumerable<Entity> entities, int batchSize, bool continueOnError, bool returnResponses)
         {
             var requests = new List<UpdateRequest>(entities.Count());
 
-            foreach (var entity in entities)
+            foreach (Entity entity in entities)
             {
-                var request = new UpdateRequest {Target = entity};
+                var request = new UpdateRequest()
+                {
+                    Target = entity
+                };
 
                 requests.Add(request);
             }
@@ -121,45 +111,37 @@ namespace Microsoft.Pfe.Xrm
         }
 
         /// <summary>
-        ///     Converts a collection of type <see cref="EntityReference" /> to <see cref="ExecuteMultipleRequest" /> batches of
-        ///     <see cref="DeleteRequest" />
+        /// Converts a collection of type <see cref="EntityReference"/> to <see cref="ExecuteMultipleRequest"/> batches of <see cref="DeleteRequest"/>
         /// </summary>
-        /// <param name="requests">The collection of entities to partition into batches as <see cref="DeleteRequest" /></param>
+        /// <param name="requests">The collection of entities to partition into batches as <see cref="DeleteRequest"/></param>
         /// <param name="batchSize">The size of each batch</param>
-        /// <returns>A keyed collection of <see cref="ExecuteMultipleRequest" />s representing the request batches</returns>
+        /// <returns>A keyed collection of <see cref="ExecuteMultipleRequest"/>s representing the request batches</returns>
         /// <remarks>
-        ///     Uses default settings of ContinueOnError = True, ReturnResposnes = True
+        /// Uses default settings of ContinueOnError = True, ReturnResposnes = True
         /// </remarks>
-        public static IDictionary<string, ExecuteMultipleRequest> AsDeleteBatches(
-            this IEnumerable<EntityReference> entityReferences, int batchSize)
+        public static IDictionary<string, ExecuteMultipleRequest> AsDeleteBatches(this IEnumerable<EntityReference> entityReferences, int batchSize)
         {
-            return entityReferences.AsDeleteBatches(batchSize, continueSettingDefault, returnSettingDefault);
+            return entityReferences.AsDeleteBatches(batchSize, continueSettingDefault, returnSettingDefault);   
         }
 
         /// <summary>
-        ///     Converts a collection of type <see cref="Entity" /> to <see cref="ExecuteMultipleRequest" /> batches of
-        ///     <see cref="DeleteRequest" />
+        /// Converts a collection of type <see cref="Entity"/> to <see cref="ExecuteMultipleRequest"/> batches of <see cref="DeleteRequest"/>
         /// </summary>
-        /// <param name="requests">The collection of entities to partition into batches as <see cref="DeleteRequest" /></param>
+        /// <param name="requests">The collection of entities to partition into batches as <see cref="DeleteRequest"/></param>
         /// <param name="batchSize">The size of each batch</param>
-        /// <param name="continueOnError">
-        ///     True if each <see cref="ExecuteMultipleRequest" /> should continue processing when an
-        ///     <see cref="OrganizationServiceFault" /> is encountered
-        /// </param>
-        /// <param name="returnResponses">
-        ///     True if an <see cref="ExecuteMultipleResponse" /> should be returned after processing is
-        ///     complete
-        /// </param>
-        /// <returns>A keyed collection of type <see cref="ExecuteMultipleRequest" /> representing the request batches</returns>
-        public static IDictionary<string, ExecuteMultipleRequest> AsDeleteBatches(
-            this IEnumerable<EntityReference> entityReferences, int batchSize, bool continueOnError,
-            bool returnResponses)
+        /// <param name="continueOnError">True if each <see cref="ExecuteMultipleRequest"/> should continue processing when an <see cref="OrganizationServiceFault"/> is encountered</param>
+        /// <param name="returnResponses">True if an <see cref="ExecuteMultipleResponse"/> should be returned after processing is complete</param>
+        /// <returns>A keyed collection of type <see cref="ExecuteMultipleRequest"/> representing the request batches</returns>
+        public static IDictionary<string, ExecuteMultipleRequest> AsDeleteBatches(this IEnumerable<EntityReference> entityReferences, int batchSize, bool continueOnError, bool returnResponses)
         {
             var requests = new List<DeleteRequest>(entityReferences.Count());
 
-            foreach (var entityRef in entityReferences)
+            foreach (EntityReference entityRef in entityReferences)
             {
-                var request = new DeleteRequest {Target = entityRef};
+                var request = new DeleteRequest()
+                {
+                    Target = entityRef
+                };
 
                 requests.Add(request);
             }
@@ -168,91 +150,88 @@ namespace Microsoft.Pfe.Xrm
         }
 
         /// <summary>
-        ///     Converts a collection of type <see cref="OrganizationRequest" /> to <see cref="ExecuteMultipleRequest" /> batches
+        /// Converts a collection of type <see cref="OrganizationRequest"/> to <see cref="ExecuteMultipleRequest"/> batches
         /// </summary>
-        /// <typeparam name="T">The typeof<see cref="OrganizationRequest" /></typeparam>
+        /// <typeparam name="T">The typeof<see cref="OrganizationRequest"/></typeparam>
         /// <param name="requests">The collection of requests to partition into batches</param>
         /// <param name="batchSize">The size of each batch</param>
-        /// <returns>A keyed collection of type <see cref="ExecuteMultipleRequest" /> representing the request batches</returns>
+        /// <returns>A keyed collection of type <see cref="ExecuteMultipleRequest"/> representing the request batches</returns>
         /// <remarks>
-        ///     Uses default settings of ContinueOnError = True, ReturnResposnes = True
+        /// Uses default settings of ContinueOnError = True, ReturnResposnes = True
         /// </remarks>
-        public static IDictionary<string, ExecuteMultipleRequest> AsBatches<T>(this IEnumerable<T> requests,
-            int batchSize) where T : OrganizationRequest
+        public static IDictionary<string, ExecuteMultipleRequest> AsBatches<T>(this IEnumerable<T> requests, int batchSize)
+            where T : OrganizationRequest
         {
             return requests.AsBatches(batchSize, continueSettingDefault, returnSettingDefault);
         }
 
         /// <summary>
-        ///     Converts a collection of type <see cref="OrganizationRequest" /> to <see cref="ExecuteMultipleRequest" /> batches
+        /// Converts a collection of type <see cref="OrganizationRequest"/> to <see cref="ExecuteMultipleRequest"/> batches
         /// </summary>
-        /// <typeparam name="T">The typeof<see cref="OrganizationRequest" /></typeparam>
+        /// <typeparam name="T">The typeof<see cref="OrganizationRequest"/></typeparam>
         /// <param name="requests">The collection of requests to partition into batches</param>
         /// <param name="batchSize">The size of each batch</param>
-        /// <param name="continueOnError">
-        ///     True if each <see cref="ExecuteMultipleRequest" /> should continue processing when an
-        ///     <see cref="OrganizationServiceFault" /> is encountered
-        /// </param>
-        /// <param name="returnResponses">
-        ///     True if an <see cref="ExecuteMultipleResponse" /> should be returned after processing is
-        ///     complete
-        /// </param>
-        /// <returns>A keyed collection of type <see cref="ExecuteMultipleRequest" /> representing the request batches</returns>
-        public static IDictionary<string, ExecuteMultipleRequest> AsBatches<T>(this IEnumerable<T> requests,
-            int batchSize, bool continueOnError, bool returnResponses) where T : OrganizationRequest
+        /// <param name="continueOnError">True if each <see cref="ExecuteMultipleRequest"/> should continue processing when an <see cref="OrganizationServiceFault"/> is encountered</param>
+        /// <param name="returnResponses">True if an <see cref="ExecuteMultipleResponse"/> should be returned after processing is complete</param>
+        /// <returns>A keyed collection of type <see cref="ExecuteMultipleRequest"/> representing the request batches</returns>
+        public static IDictionary<string, ExecuteMultipleRequest> AsBatches<T>(this IEnumerable<T> requests, int batchSize, bool continueOnError, bool returnResponses)
+            where T : OrganizationRequest
         {
-            return requests.AsBatches(batchSize,
-                new ExecuteMultipleSettings {ContinueOnError = continueOnError, ReturnResponses = returnResponses});
+            return requests.AsBatches(batchSize, new ExecuteMultipleSettings() { ContinueOnError = continueOnError, ReturnResponses = returnResponses });
         }
 
         /// <summary>
-        ///     Converts a collection of type <see cref="OrganizationRequest" /> to <see cref="ExecuteMultipleRequest" /> batches
+        /// Converts a collection of type <see cref="OrganizationRequest"/> to <see cref="ExecuteMultipleRequest"/> batches
         /// </summary>
-        /// <typeparam name="T">The typeof<see cref="OrganizationRequest" /></typeparam>
+        /// <typeparam name="T">The typeof<see cref="OrganizationRequest"/></typeparam>
         /// <param name="requests">The collection of requests to partition into batches</param>
         /// <param name="batchSize">The size of each batch</param>
         /// <param name="batchSettings">The desired settings</param>
-        /// <returns>A keyed collection of type <see cref="ExecuteMultipleRequest" /> representing the request batches</returns>
-        public static IDictionary<string, ExecuteMultipleRequest> AsBatches<T>(this IEnumerable<T> requests,
-            int batchSize, ExecuteMultipleSettings batchSettings) where T : OrganizationRequest
+        /// <returns>A keyed collection of type <see cref="ExecuteMultipleRequest"/> representing the request batches</returns>
+        public static IDictionary<string, ExecuteMultipleRequest> AsBatches<T>(this IEnumerable<T> requests, int batchSize, ExecuteMultipleSettings batchSettings)
+            where T : OrganizationRequest
         {
-            if (batchSize <= 0) throw new ArgumentException("Batch size must be greater than 0", "batchSize");
+            if (batchSize <= 0)
+                throw new ArgumentException("Batch size must be greater than 0", "batchSize");
             if (batchSize > maxBatchSize)
-                throw new ArgumentException(
-                    string.Format("Batch size of {0} exceeds max batch size of 1000", batchSize), "batchSize");
-            if (batchSettings == null) throw new ArgumentNullException("batchSettings");
+                throw new ArgumentException(String.Format("Batch size of {0} exceeds max batch size of 1000", batchSize), "batchSize");
+            if (batchSettings == null)
+                throw new ArgumentNullException("batchSettings");
 
             // Index each request
-            var indexedRequests = requests.Select((r, i) => new {Index = i, Value = r});
+            var indexedRequests = requests.Select((r, i) => new { Index = i, Value = r });
 
             // Partition the indexed requests by batch size 
             var partitions = indexedRequests.GroupBy(ir => ir.Index / batchSize);
 
             // Convert each partition to an ExecuteMultilpleRequest batch
-            var batches = partitions.Select(p => p.Select(ir => ir.Value).AsBatch(batchSettings));
+            IEnumerable<ExecuteMultipleRequest> batches = partitions.Select(p => p.Select(ir => ir.Value).AsBatch(batchSettings));
 
             // Index each batch
-            var indexedBatches = batches.Select((b, i) => new {Index = i, Value = b});
+            var indexedBatches = batches.Select((b, i) => new { Index = i, Value = b });
 
             // Return indexed batches as dictionary
             return indexedBatches.ToDictionary(ib => ib.Index.ToString(), ib => ib.Value);
         }
 
         /// <summary>
-        ///     Converts a collection of type <see cref="OrganizationRequest" /> to a single <see cref="ExecuteMultipleRequest" />
-        ///     instance
+        /// Converts a collection of type <see cref="OrganizationRequest"/> to a single <see cref="ExecuteMultipleRequest"/> instance  
         /// </summary>
-        /// <typeparam name="T">The typeof<see cref="OrganizationRequest" /></typeparam>
+        /// <typeparam name="T">The typeof<see cref="OrganizationRequest"/></typeparam>
         /// <param name="requests">The collection of requests representing the batch</param>
         /// <param name="batchSettings">The desired settings</param>
-        /// <returns>A single <see cref="ExecuteMultipleRequest" /> instance</returns>
-        public static ExecuteMultipleRequest AsBatch<T>(this IEnumerable<T> requests,
-            ExecuteMultipleSettings batchSettings) where T : OrganizationRequest
+        /// <returns>A single <see cref="ExecuteMultipleRequest"/> instance</returns>
+        public static ExecuteMultipleRequest AsBatch<T>(this IEnumerable<T> requests, ExecuteMultipleSettings batchSettings)
+            where T : OrganizationRequest
         {
             var batch = new OrganizationRequestCollection();
             batch.AddRange(requests);
 
-            return new ExecuteMultipleRequest {Requests = batch, Settings = batchSettings};
+            return new ExecuteMultipleRequest()
+            {
+                Requests = batch,
+                Settings = batchSettings
+            };
         }
     }
 }

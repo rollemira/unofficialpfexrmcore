@@ -8,7 +8,7 @@
 
 # Build results
 
-.azuregit/*
+.vscode/
 .vs/
 tools/
 [Dd]ebug/
@@ -17,23 +17,7 @@ x64/
 build/
 [Bb]in/
 [Oo]bj/
-BuildArtifacts/
-!Wellworx/Bin/
-Wellworx/Bin/*.pdb
-Wellworx/Bin/*.xml
-Wellworx/Bin/*.refresh
-Wellworx/Bin/DietSystems.*
-Wellworx/Bin/Elmah.*
-Wellworx/Bin/ServiceStack.*
-!WellworxTablet/Bin/
-WellworxTablet/Bin/*.pdb
-WellworxTablet/Bin/*.xml
-WellworxTablet/Bin/*.refresh
-WellworxTablet/Bin/DietSystems.*
-WellworxTablet/Bin/Elmah.*
-WellworxTablet/Bin/ServiceStack.*
-Wellworx*/App_Data/[Jj]obs/
-Wellworx*/print/*.zip
+v*-old/
 
 # Enable "build/" folder in the NuGet Packages folder since NuGet packages use it for MSBuild targets
 !packages/*/build/
@@ -175,5 +159,4 @@ $RECYCLE.BIN/
 
 # Mac desktop service store files
 .DS_Store
-/.azuregit/Staging
-/.azuregit/Staging
+/v8.1.2-old

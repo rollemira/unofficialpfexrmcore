@@ -8,14 +8,14 @@
         /// <summary>
         /// A cache strategy for non-web applications
         /// </summary>
-        public static ICacheStrategy MemoryCacheStrategy => new MemoryCacheStrategy();
+        public static ICacheStrategy Memory => new CacheStrategyMemory();
         /// <summary>
         /// Turns off caching
         /// </summary>
-        public static ICacheStrategy None => new NoCacheStrategy();
+        public static ICacheStrategy None => new CacheStrategyNone();
         /// <summary>
         /// A cache strategy for web applications
         /// </summary>
-        public static ICacheStrategy WebCacheStrategy => new WebCacheStrategy();
+        public static ICacheStrategy Web => new CacheStrategyWeb();
     }
 }

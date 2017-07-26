@@ -6,7 +6,7 @@ namespace Microsoft.Pfe.Xrm.Caching
     /// <summary>
     /// This is a cache strategy that can be used in ASP.NET applications
     /// </summary>
-    public sealed class WebCacheStrategy : ICacheStrategy
+    public sealed class CacheStrategyWeb : ICacheStrategy
     {
         /// <summary>
         ///     Add value into the cache
@@ -21,7 +21,7 @@ namespace Microsoft.Pfe.Xrm.Caching
         /// </remarks>
         public void Add<T>(T o, string key, TimeSpan? slidingExpiration = null, DateTime? absoluteExpirationUtc = null)
         {
-            if (Exists(key)) return;
+            if (Exists(key)) Remove(key);
             //absolute expiration should have priority
             if (absoluteExpirationUtc.HasValue)
             {

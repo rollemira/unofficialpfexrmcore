@@ -12,40 +12,39 @@
   or lawsuits, including attorneys’ fees, that arise or result from the use or distribution of the Sample Code.
 
  =================================================================================================================================*/
-
-using System.ServiceModel;
-using Microsoft.Xrm.Sdk;
-
 namespace Microsoft.Pfe.Xrm
 {
-    /// <summary>
-    ///     Represents an <see cref="IDiscoveryRequest" /> operation failure during parallel execution
-    /// </summary>
-    /// <typeparam name="TRequest">The originating request type</typeparam>
-    internal class
-        ParallelDiscoveryOperationFailure<TRequest> : ParallelOperationFailure<TRequest, DiscoveryServiceFault>
-    {
-        public ParallelDiscoveryOperationFailure(TRequest request, FaultException<DiscoveryServiceFault> fault) :
-            base(request, fault)
-        {
-        }
-    }
+    using System;
+    using System.Collections.Generic;
+    using System.Linq;
+    using System.ServiceModel;    
+    using System.Text;
+    using System.Threading.Tasks;
+
+    using Microsoft.Xrm.Sdk;
 
     /// <summary>
-    ///     Represents an <see cref="IOrganizationService" /> operation failure during parallel execution
+    /// Represents an <see cref="IDiscoveryRequest"/> operation failure during parallel execution
     /// </summary>
     /// <typeparam name="TRequest">The originating request type</typeparam>
-    internal class
-        ParallelOrganizationOperationFailure<TRequest> : ParallelOperationFailure<TRequest, OrganizationServiceFault>
+    internal class ParallelDiscoveryOperationFailure<TRequest> : ParallelOperationFailure<TRequest, DiscoveryServiceFault>
     {
-        public ParallelOrganizationOperationFailure(TRequest request,
-            FaultException<OrganizationServiceFault> fault) : base(request, fault)
-        {
-        }
+        public ParallelDiscoveryOperationFailure(TRequest request, FaultException<DiscoveryServiceFault> fault)
+            : base(request, fault) {  }
     }
-
+    
     /// <summary>
-    ///     Represents a service operation failure during parallel execution
+    /// Represents an <see cref="IOrganizationService"/> operation failure during parallel execution
+    /// </summary>
+    /// <typeparam name="TRequest">The originating request type</typeparam>
+    internal class ParallelOrganizationOperationFailure<TRequest> : ParallelOperationFailure<TRequest, OrganizationServiceFault>
+    {
+        public ParallelOrganizationOperationFailure(TRequest request, FaultException<OrganizationServiceFault> fault)
+            : base(request, fault) { }        
+    }
+    
+    /// <summary>
+    /// Represents a service operation failure during parallel execution
     /// </summary>
     /// <typeparam name="TRequest">The originating request type</typeparam>
     /// <typeparam name="TFault">The fault type representing the failure event</typeparam>
@@ -54,15 +53,13 @@ namespace Microsoft.Pfe.Xrm
     {
         public ParallelOperationFailure(TRequest request, FaultException<TFault> exception)
         {
-            Request = request;
-            Exception = exception;
+            this.Request = request;
+            this.Exception = exception;
         }
-
+        
         public TRequest Request { get; set; }
         public FaultException<TFault> Exception { get; set; }
     }
 
-    public interface IParallelOperationFailure
-    {
-    }
+    public interface IParallelOperationFailure {  }
 }

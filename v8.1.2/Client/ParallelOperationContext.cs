@@ -12,80 +12,75 @@
   or lawsuits, including attorneys’ fees, that arise or result from the use or distribution of the Sample Code.
 
  =================================================================================================================================*/
-
-using System.Collections.Generic;
-
 namespace Microsoft.Pfe.Xrm
 {
+    using System;
+    using System.Collections.Generic;
+    using System.Linq;
+    using System.ServiceModel;
+    using System.ServiceModel.Description;
+    using System.Text;
+
+    using Microsoft.Xrm.Sdk;
+    using Microsoft.Xrm.Sdk.Client;
+    using Microsoft.Xrm.Sdk.Discovery;
+
     /// <summary>
-    ///     A parallel operation context object that maintains a reference to a Discovery.svc channel
+    /// A parallel operation context object that maintains a reference to a Discovery.svc channel
     /// </summary>
     /// <typeparam name="TResponse">The expected response type to collect</typeparam>
     /// <remarks>
-    ///     ASSUMPTION: The local reference temporarily points to a threadlocal instance shared across partitions, thus we do
-    ///     not dispose from the context directly
+    /// ASSUMPTION: The local reference temporarily points to a threadlocal instance shared across partitions, thus we do not dispose from the context directly
     /// </remarks>
-    internal sealed class ParallelDiscoveryOperationContext<TRequest, TResponse> : ParallelOperationContext<
-        ManagedTokenDiscoveryServiceProxy, TResponse, ParallelDiscoveryOperationFailure<TRequest>>
+    internal sealed class ParallelDiscoveryOperationContext<TRequest, TResponse> : ParallelOperationContext<ManagedTokenDiscoveryServiceProxy, TResponse, ParallelDiscoveryOperationFailure<TRequest>>
     {
-        public ParallelDiscoveryOperationContext(ManagedTokenDiscoveryServiceProxy proxy) : base(proxy)
-        {
-        }
+        public ParallelDiscoveryOperationContext(ManagedTokenDiscoveryServiceProxy proxy)
+            : base(proxy) { }
     }
-
+    
     /// <summary>
-    ///     A parallel operation context object that maintains a reference to a Organization.svc channel
+    /// A parallel operation context object that maintains a reference to a Organization.svc channel
     /// </summary>
     /// <typeparam name="TResponse">The expected response type to collect</typeparam>
     /// <remarks>
-    ///     ASSUMPTION: The local reference temporarily points to a threadlocal instance shared across partitions, thus we do
-    ///     not dispose from the context directly
+    /// ASSUMPTION: The local reference temporarily points to a threadlocal instance shared across partitions, thus we do not dispose from the context directly
     /// </remarks>
-    internal sealed class ParallelOrganizationOperationContext<TRequest, TResponse> : ParallelOperationContext<
-        ManagedTokenOrganizationServiceProxy, TResponse, ParallelOrganizationOperationFailure<TRequest>>
+    internal sealed class ParallelOrganizationOperationContext<TRequest, TResponse> : ParallelOperationContext<ManagedTokenOrganizationServiceProxy, TResponse, ParallelOrganizationOperationFailure<TRequest>>
     {
-        public ParallelOrganizationOperationContext()
-        {
-        }
-
-        public ParallelOrganizationOperationContext(ManagedTokenOrganizationServiceProxy proxy) : base(proxy)
-        {
-        }
+        public ParallelOrganizationOperationContext() { }
+        
+        public ParallelOrganizationOperationContext(ManagedTokenOrganizationServiceProxy proxy)
+            : base(proxy) {  }        
     }
-
+    
     /// <summary>
-    ///     A context object can be passed between iterations of a parallelized process partition
-    ///     Maintains a reference to a ThreadLocal
-    ///     <OrganizationServiceProxy>
-    ///         .Value and
-    ///         implements ILocalResults<TResponse> for collecting partitioned results in parallel operations
+    /// A context object can be passed between iterations of a parallelized process partition
+    /// Maintains a reference to a ThreadLocal<OrganizationServiceProxy>.Value and 
+    /// implements ILocalResults<TResponse> for collecting partitioned results in parallel operations
     /// </summary>
     /// <typeparam name="TResponse">The expected response type to collect</typeparam>
     internal class ParallelOperationContext<TLocal, TResponse, TFailure> : ILocalResults<TResponse, TFailure>
         where TFailure : IParallelOperationFailure
     {
-        protected ParallelOperationContext()
-        {
-        }
-
-        public ParallelOperationContext(TLocal local)
-        {
-            Local = local;
-        }
+        protected ParallelOperationContext() {  }
+        
+        public ParallelOperationContext(TLocal local) { this.Local = local; }
 
         public TLocal Local { get; set; }
 
         #region ILocalResults<TResponse> Members
 
         private IList<TResponse> results;
-
         public IList<TResponse> Results
         {
             get
             {
-                if (results == null) results = new List<TResponse>();
+                if (this.results == null)
+                {
+                    this.results = new List<TResponse>();
+                }
 
-                return results;
+                return this.results;
             }
         }
 
@@ -95,9 +90,12 @@ namespace Microsoft.Pfe.Xrm
         {
             get
             {
-                if (failures == null) failures = new List<TFailure>();
+                if (this.failures == null)
+                {
+                    this.failures = new List<TFailure>();
+                }
 
-                return failures;
+                return this.failures;
             }
         }
 

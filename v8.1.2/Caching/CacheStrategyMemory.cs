@@ -6,7 +6,7 @@ namespace Microsoft.Pfe.Xrm.Caching
     /// <summary>
     /// This is a cache strategy that can be used for non-web
     /// </summary>
-    public sealed class MemoryCacheStrategy : ICacheStrategy
+    public sealed class CacheStrategyMemory : ICacheStrategy
     {
         private static readonly MemoryCache MemoryCache = new MemoryCache("pfexrmcore.cache");
 
@@ -23,7 +23,7 @@ namespace Microsoft.Pfe.Xrm.Caching
         /// </remarks>
         public void Add<T>(T o, string key, TimeSpan? slidingExpiration = null, DateTime? absoluteExpirationUtc = null)
         {
-            if (Exists(key)) return;
+            if (Exists(key)) Remove(key);
             var cachePolicy = new CacheItemPolicy();
             //absolute expiration should have priority
             if (absoluteExpirationUtc.HasValue)
@@ -111,7 +111,7 @@ namespace Microsoft.Pfe.Xrm.Caching
             GC.SuppressFinalize(this);
         }
 
-        ~MemoryCacheStrategy()
+        ~CacheStrategyMemory()
         {
             Dispose(false);
         }

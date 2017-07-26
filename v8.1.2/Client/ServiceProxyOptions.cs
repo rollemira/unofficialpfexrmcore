@@ -12,45 +12,47 @@
   or lawsuits, including attorneys’ fees, that arise or result from the use or distribution of the Sample Code.
 
  =================================================================================================================================*/
-
-using System;
-using Microsoft.Xrm.Sdk.Client;
-
 namespace Microsoft.Pfe.Xrm
 {
-    /// <summary>
-    ///     Class that contains configurable options for <see cref="DiscoveryServiceProxy" /> requests
-    /// </summary>
-    public class DiscoveryServiceProxyOptions : ServiceProxyOptions
-    {
-    }
+    using System;
+    using System.Collections.Generic;
+    using System.Linq;
+    using System.Text;
+
+    using Microsoft.Xrm.Sdk;
+    using Microsoft.Xrm.Sdk.Client;
 
     /// <summary>
-    ///     Class that contains configurable options for <see cref="OrganizationServiceProxy" /> requests
+    /// Class that contains configurable options for <see cref="DiscoveryServiceProxy"/> requests
+    /// </summary>
+    public class DiscoveryServiceProxyOptions : ServiceProxyOptions { }
+    
+    /// <summary>
+    /// Class that contains configurable options for <see cref="OrganizationServiceProxy"/> requests
     /// </summary>
     public class OrganizationServiceProxyOptions : ServiceProxyOptions
     {
         public bool ShouldEnableProxyTypes { get; set; }
         public Guid CallerId { get; set; }
     }
-
+    
     /// <summary>
-    ///     Base class that contains configurable options for <see cref="ServiceProxy{T}" /> requests
+    /// Base class that contains configurable options for <see cref="ServiceProxy{T}"/> requests
     /// </summary>
     public class ServiceProxyOptions
-    {
-        public static TimeSpan DefaultProxyTimeout = new TimeSpan(0, 2, 0);
-
+    {                
+        public static TimeSpan DefaultProxyTimeout = new TimeSpan(0,2,0);
+        
         /// <summary>
-        ///     Construct a <see cref="ServiceProxyOptions" /> with default Timeout
+        /// Construct a <see cref="ServiceProxyOptions"/> with default Timeout
         /// </summary>
         public ServiceProxyOptions()
-        {
-            Timeout = DefaultProxyTimeout;
+        {        
+            this.Timeout = ServiceProxyOptions.DefaultProxyTimeout;
         }
 
         /// <summary>
-        ///     The timeout for the <see cref="ServiceProxy{T}" /> channel
+        /// The timeout for the <see cref="ServiceProxy{T}"/> channel
         /// </summary>
         public TimeSpan Timeout { get; set; }
     }
