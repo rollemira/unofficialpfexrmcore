@@ -672,11 +672,11 @@ namespace Microsoft.Pfe.Xrm
             return this.ExecuteOperationWithResponse<RetrieveRequest, Entity>(requests, options,
                 (request, context) =>
                 {
-                    var cacheKey = string.Format("Entity[{0}]ID[{1}]Columns[{2}]", request.Target.LogicalName, request.Target.Id, 
-                        request.ColumnSet.ToJsonString());
                     //avoid thread collision
                     lock (ThreadSafety.SyncRoot)
                     {
+                        var cacheKey = string.Format("Entity[{0}]ID[{1}]Columns[{2}]", request.Target.LogicalName, request.Target.Id,
+                            request.ColumnSet.ToJsonString());
                         Entity entity;
                         //can we get it from cache?
                         if (ServiceManager.Cache.Exists(cacheKey))
