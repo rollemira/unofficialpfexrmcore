@@ -744,7 +744,7 @@ namespace Microsoft.Pfe.Xrm
         /// Performs data parallelism on a collection of type <see cref="RetrieveRequest"/> to execute <see cref="IOrganizationService"/>.Retrieve() requests concurrently
         /// </summary>
         /// <param name="requests">The <see cref="RetrieveRequest"/> collection defining the entities to be retrieved</param>
-        /// <param name="disableCache">Disables any cache lookup</param>
+        /// <param name="suppressCache">Suppresses any cache lookup or insertion</param>
         /// <param name="errorHandler">An optional error handling operation. Handler will be passed the request that failed along with the corresponding <see cref="FaultException{OrganizationServiceFault}"/></param>
         /// <returns>A collection of type <see cref="Entity"/> containing the retrieved entities</returns>
         /// <remarks>
@@ -752,10 +752,10 @@ namespace Microsoft.Pfe.Xrm
         /// This approach should only be used if trying to retrieve multiple individual records of varying entity types.
         /// </remarks>
         /// <exception cref="AggregateException">callers should catch <see cref="AggregateException"/> to handle exceptions raised by individual requests</exception>
-        public IEnumerable<Entity> Retrieve(IEnumerable<RetrieveRequest> requests, bool disableCache,
+        public IEnumerable<Entity> Retrieve(IEnumerable<RetrieveRequest> requests, bool suppressCache,
             Action<RetrieveRequest, FaultException<OrganizationServiceFault>> errorHandler = null)
         {
-            return this.Retrieve(requests, new OrganizationServiceProxyOptions(), null, null, disableCache, errorHandler);
+            return this.Retrieve(requests, new OrganizationServiceProxyOptions(), null, null, suppressCache, errorHandler);
         }
 
         /// <summary>
@@ -818,7 +818,7 @@ namespace Microsoft.Pfe.Xrm
         /// </summary>
         /// <param name="requests">The <see cref="RetrieveRequest"/> collection defining the entities to be retrieved</param>
         /// <param name="options">The configurable options for the parallel <see cref="OrganizationServiceProxy"/> requests</param>
-        /// <param name="disableCache">Disables any cache lookup</param>
+        /// <param name="suppressCache">Suppresses any cache lookup or insertion</param>
         /// <param name="errorHandler">An optional error handling operation. Handler will be passed the request that failed along with the corresponding <see cref="FaultException{OrganizationServiceFault}"/></param>
         /// <returns>A collection of type <see cref="Entity"/> containing the retrieved entities</returns>
         /// <remarks>
@@ -827,10 +827,10 @@ namespace Microsoft.Pfe.Xrm
         /// </remarks>
         /// <exception cref="AggregateException">callers should catch <see cref="AggregateException"/> to handle exceptions raised by individual requests</exception>
         public IEnumerable<Entity> Retrieve(IEnumerable<RetrieveRequest> requests,
-            OrganizationServiceProxyOptions options, bool disableCache,
+            OrganizationServiceProxyOptions options, bool suppressCache,
             Action<RetrieveRequest, FaultException<OrganizationServiceFault>> errorHandler = null)
         {
-            return this.Retrieve(requests, options, null, null, disableCache, errorHandler);
+            return this.Retrieve(requests, options, null, null, suppressCache, errorHandler);
         }
 
         /// <summary>
@@ -881,7 +881,7 @@ namespace Microsoft.Pfe.Xrm
         /// <param name="errorHandler">An optional error handling operation. Handler will be passed the request that failed along with the corresponding <see cref="FaultException{OrganizationServiceFault}"/></param>
         /// <param name="slidingExpiration">The cache sliding expiration (If an ICachesStragegy Chosen <see cref="CacheStrategies"/>)</param>
         /// <param name="absoluteExpirationUtc">The cache absolute expiration in UTC (If an ICachesStragegy Chosen <see cref="CacheStrategies"/>)</param>
-        /// <param name="disableCache">Disables any cache lookup</param>
+        /// <param name="suppressCache">Suppresses any cache lookup or insertion</param>
         /// <returns>A collection of type <see cref="Entity"/> containing the retrieved entities</returns>
         /// <remarks>
         /// IMPORTANT!! RetrieveMultiple is the favored approach for retrieving multiple entities of the same type
@@ -889,7 +889,7 @@ namespace Microsoft.Pfe.Xrm
         /// </remarks>
         /// <exception cref="AggregateException">callers should catch <see cref="AggregateException"/> to handle exceptions raised by individual requests</exception>
         private IEnumerable<Entity> Retrieve(IEnumerable<RetrieveRequest> requests, OrganizationServiceProxyOptions options, 
-            TimeSpan? slidingExpiration, DateTime? absoluteExpirationUtc, bool? disableCache, 
+            TimeSpan? slidingExpiration, DateTime? absoluteExpirationUtc, bool? suppressCache, 
             Action<RetrieveRequest, FaultException<OrganizationServiceFault>> errorHandler = null)
         {
             return this.ExecuteOperationWithResponse<RetrieveRequest, Entity>(requests, options,
@@ -898,7 +898,7 @@ namespace Microsoft.Pfe.Xrm
                     //avoid thread collision
                     lock (ThreadSafety.SyncRoot)
                     {
-                        var cacheDisabled = disableCache ?? false;
+                        var cacheDisabled = suppressCache ?? false;
                         var cacheKey = CacheKeys.EntityFormat.Fmt(request.Target.LogicalName, request.Target.Id);
                         //request.ColumnSet.ToJsonString() <- This is for columnset
                         Entity entity;
@@ -1069,7 +1069,7 @@ namespace Microsoft.Pfe.Xrm
         /// </summary>
         /// <param name="queries">The keyed collection of queries (<see cref="QueryExpression"/> or <see cref="FetchExpression"/>)</param>
         /// <param name="shouldRetrieveAllPages">True = iterative requests will be performed to retrieve all pages, otherwise only the first results page will be returned for each query</param>
-        /// <param name="disableCache">Disables any cache lookup</param>
+        /// <param name="suppressCache">Suppresses any cache lookup or insertion</param>
         /// <param name="errorHandler">An optional error handling operation. Handler will be passed the request that failed along with the corresponding <see cref="FaultException{OrganizationServiceFault}"/></param>
         /// <returns>A keyed collection of <see cref="EntityCollection"/> values which represent the results of each query</returns>
         /// <remarks>
@@ -1079,9 +1079,9 @@ namespace Microsoft.Pfe.Xrm
         /// leverage NoLock=true where possible to reduce database contention.
         /// </remarks>
         /// <exception cref="AggregateException">callers should catch <see cref="AggregateException"/> to handle exceptions raised by individual requests</exception>
-        public IDictionary<string, EntityCollection> RetrieveMultiple(IDictionary<string, QueryBase> queries, bool shouldRetrieveAllPages, bool disableCache, Action<KeyValuePair<string, QueryBase>, FaultException<OrganizationServiceFault>> errorHandler = null)
+        public IDictionary<string, EntityCollection> RetrieveMultiple(IDictionary<string, QueryBase> queries, bool shouldRetrieveAllPages, bool suppressCache, Action<KeyValuePair<string, QueryBase>, FaultException<OrganizationServiceFault>> errorHandler = null)
         {
-            return this.RetrieveMultiple(queries, shouldRetrieveAllPages, new OrganizationServiceProxyOptions(), null, null, disableCache, errorHandler);
+            return this.RetrieveMultiple(queries, shouldRetrieveAllPages, new OrganizationServiceProxyOptions(), null, null, suppressCache, errorHandler);
         }
 
         /// <summary>
@@ -1150,7 +1150,7 @@ namespace Microsoft.Pfe.Xrm
         /// <param name="queries">The keyed collection of queries (<see cref="QueryExpression"/> or <see cref="FetchExpression"/>)</param>
         /// <param name="shouldRetrieveAllPages">True = iterative requests will be performed to retrieve all pages, otherwise only the first results page will be returned for each query</param>
         /// <param name="options">The configurable options for the parallel <see cref="OrganizationServiceProxy"/> requests</param>
-        /// <param name="disableCache">Disables any cache lookup</param>
+        /// <param name="suppressCache">Suppresses any cache lookup or insertion</param>
         /// <param name="errorHandler">An optional error handling operation. Handler will be passed the request that failed along with the corresponding <see cref="FaultException{OrganizationServiceFault}"/></param>        
         /// <returns>A keyed collection of <see cref="EntityCollection"/> values which represent the results of each query</returns>
         /// <remarks>
@@ -1159,10 +1159,10 @@ namespace Microsoft.Pfe.Xrm
         /// </remarks>
         /// <exception cref="AggregateException">callers should catch <see cref="AggregateException"/> to handle exceptions raised by individual requests</exception>
         public IDictionary<string, EntityCollection> RetrieveMultiple(IDictionary<string, QueryBase> queries, bool shouldRetrieveAllPages,
-            OrganizationServiceProxyOptions options, bool disableCache,
+            OrganizationServiceProxyOptions options, bool suppressCache,
             Action<KeyValuePair<string, QueryBase>, FaultException<OrganizationServiceFault>> errorHandler = null)
         {
-            return this.RetrieveMultiple(queries, shouldRetrieveAllPages, options, null, null, disableCache, errorHandler);
+            return this.RetrieveMultiple(queries, shouldRetrieveAllPages, options, null, null, suppressCache, errorHandler);
         }
 
         /// <summary>
@@ -1215,7 +1215,7 @@ namespace Microsoft.Pfe.Xrm
         /// <param name="options">The configurable options for the parallel <see cref="OrganizationServiceProxy"/> requests</param>
         /// <param name="slidingExpiration">The cache sliding expiration (If an ICachesStragegy Chosen <see cref="CacheStrategies"/>)</param>
         /// <param name="absoluteExpirationUtc">The cache absolute expiration in UTC (If an ICachesStragegy Chosen <see cref="CacheStrategies"/>)</param>
-        /// <param name="disableCache">Disables any cache lookup</param>
+        /// <param name="suppressCache">Suppresses any cache lookup or insertion</param>
         /// <param name="errorHandler">An optional error handling operation. Handler will be passed the request that failed along with the corresponding <see cref="FaultException{OrganizationServiceFault}"/></param>        
         /// <returns>A keyed collection of <see cref="EntityCollection"/> values which represent the results of each query</returns>
         /// <remarks>
@@ -1224,13 +1224,13 @@ namespace Microsoft.Pfe.Xrm
         /// </remarks>
         /// <exception cref="AggregateException">callers should catch <see cref="AggregateException"/> to handle exceptions raised by individual requests</exception>
         private IDictionary<string, EntityCollection> RetrieveMultiple(IDictionary<string, QueryBase> queries, bool shouldRetrieveAllPages, 
-            OrganizationServiceProxyOptions options, TimeSpan? slidingExpiration, DateTime? absoluteExpirationUtc, bool? disableCache,
+            OrganizationServiceProxyOptions options, TimeSpan? slidingExpiration, DateTime? absoluteExpirationUtc, bool? suppressCache,
             Action<KeyValuePair<string, QueryBase>, FaultException<OrganizationServiceFault>> errorHandler = null)
         {
             return this.ExecuteOperationWithResponse<KeyValuePair<string, QueryBase>, KeyValuePair<string, EntityCollection>>(queries, options,
                     (query, context) =>
                     {
-                        var result = context.Local.RetrieveMultiple(query.Value, shouldRetrieveAllPages, slidingExpiration, absoluteExpirationUtc, disableCache);
+                        var result = context.Local.RetrieveMultiple(query.Value, shouldRetrieveAllPages, slidingExpiration, absoluteExpirationUtc, suppressCache);
 
                         context.Results.Add(new KeyValuePair<string, EntityCollection>(query.Key, result));
                     },
