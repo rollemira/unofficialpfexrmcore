@@ -32,7 +32,17 @@ namespace Microsoft.Pfe.Xrm
         /// </remarks>
         public void Add<T>(T o, string key, TimeSpan? slidingExpiration = null, DateTime? absoluteExpiration = null)
         {
-            _cacheStrategy.Add(o, key, slidingExpiration, absoluteExpiration);
+            //only add it if we're given an expiration
+            if (slidingExpiration.HasValue || absoluteExpiration.HasValue)
+                _cacheStrategy.Add(o, key, slidingExpiration, absoluteExpiration);
+        }
+
+        /// <summary>
+        ///     Clears the cache of all items.
+        /// </summary>
+        public void Clear()
+        {
+            _cacheStrategy.Clear();
         }
 
         /// <summary>

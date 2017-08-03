@@ -21,6 +21,11 @@ namespace Microsoft.Pfe.Xrm
         void Add<T>(T o, string key, TimeSpan? slidingExpiration = default(TimeSpan?), DateTime? absoluteExpirationUtc = default(DateTime?));
 
         /// <summary>
+        ///     Clears the cache of all items.
+        /// </summary>
+        void Clear();
+
+        /// <summary>
         ///     Check for item in cache
         /// </summary>
         /// <param name="key">Name of cached item</param>

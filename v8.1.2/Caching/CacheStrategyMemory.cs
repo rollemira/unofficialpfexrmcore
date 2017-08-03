@@ -8,7 +8,8 @@ namespace Microsoft.Pfe.Xrm
     /// </summary>
     public sealed class CacheStrategyMemory : ICacheStrategy
     {
-        private static readonly MemoryCache MemoryCache = new MemoryCache("pfexrmcore.cache");
+        private const string CacheName = "pfexrmcore.cache";
+        private static MemoryCache _memoryCache = new MemoryCache(CacheName);
 
         /// <summary>
         ///     Add value into the cache
@@ -36,7 +37,17 @@ namespace Microsoft.Pfe.Xrm
                 cachePolicy.SlidingExpiration = slidingExpiration.Value;
 
             }
-            MemoryCache.Add(new CacheItem(key, o), cachePolicy);
+            _memoryCache.Add(new CacheItem(key, o), cachePolicy);
+        }
+
+        /// <summary>
+        ///     Clears the cache of all items.
+        /// </summary>
+        public void Clear()
+        {
+            _memoryCache.Dispose();
+            _memoryCache = null;
+            _memoryCache = new MemoryCache(CacheName);
         }
 
         /// <summary>
@@ -48,7 +59,7 @@ namespace Microsoft.Pfe.Xrm
         {
             try
             {
-                object item = MemoryCache[key];
+                var item = _memoryCache[key];
                 return item == null;
             }
             catch (Exception)
@@ -67,7 +78,7 @@ namespace Microsoft.Pfe.Xrm
         {
             try
             {
-                return (T)MemoryCache[key];
+                return (T)_memoryCache[key];
             }
             catch
             {
@@ -83,7 +94,7 @@ namespace Microsoft.Pfe.Xrm
         {
             try
             {
-                MemoryCache.Remove(key);
+                _memoryCache.Remove(key);
             }
             catch (Exception)
             {
@@ -101,7 +112,7 @@ namespace Microsoft.Pfe.Xrm
             ReleaseUnmanagedResources();
             if (disposing)
             {
-                MemoryCache?.Dispose();
+                _memoryCache?.Dispose();
             }
         }
 

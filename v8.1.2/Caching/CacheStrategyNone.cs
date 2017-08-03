@@ -29,6 +29,14 @@ namespace Microsoft.Pfe.Xrm
         }
 
         /// <summary>
+        ///     Clears the cache of all items.
+        /// </summary>
+        public void Clear()
+        {
+            
+        }
+
+        /// <summary>
         ///     Check for item in cache
         /// </summary>
         /// <param name="key">Name of cached item</param>

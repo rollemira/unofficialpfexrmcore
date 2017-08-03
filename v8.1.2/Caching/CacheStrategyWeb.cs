@@ -34,6 +34,18 @@ namespace Microsoft.Pfe.Xrm
         }
 
         /// <summary>
+        ///     Clears the cache of all items.
+        /// </summary>
+        public void Clear()
+        {
+            var enumerator = HttpContext.Current.Cache.GetEnumerator();
+            while (enumerator.MoveNext())
+            {
+                HttpContext.Current.Cache.Remove((string) enumerator.Key);
+            }
+        }
+
+        /// <summary>
         ///     Check for item in cache
         /// </summary>
         /// <param name="key">Name of cached item</param>
@@ -67,7 +79,14 @@ namespace Microsoft.Pfe.Xrm
         /// <param name="key">Name of cached item</param>
         public void Remove(string key)
         {
-            HttpContext.Current.Cache.Remove(key);
+            try
+            {
+                HttpContext.Current.Cache.Remove(key);
+            }
+            catch
+            {
+                //don't do anything
+            }
         }
 
         public void Dispose()

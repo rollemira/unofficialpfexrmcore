@@ -65,6 +65,7 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="Caching\CacheKeyFormats.cs" />
     <Compile Include="Caching\CacheStrategies.cs" />
     <Compile Include="Caching\ICacheStrategy.cs" />
     <Compile Include="Caching\CacheStrategyMemory.cs" />
@@ -79,6 +80,7 @@
     <Compile Include="Client\ParallelOperationFailure.cs" />
     <Compile Include="Client\ParallelServiceProxy.cs" />
     <Compile Include="Client\ServiceProxyOptions.cs" />
+    <Compile Include="Extensions\StringExtensions.cs" />
     <Compile Include="Threading\ThreadSafety.cs" />
     <Compile Include="Client\XrmServiceManager.cs" />
     <Compile Include="Client\XrmServiceUriFactory.cs" />
