@@ -64,6 +64,7 @@
   <ItemGroup>
     <Compile Include="ParallelDiscoverySamples.cs" />
     <Compile Include="ParallelRequestSamples.cs" />
+    <Compile Include="ParallelRequestsWithInMemoryCacheSamples.cs" />
     <Compile Include="ParallelRetrieveMultipleWithInMemoryAbsoluteCacheExpirationSamples.cs" />
     <Compile Include="ParallelRetrieveMultipleWithInMemorySlidingCacheExpirationSamples.cs" />
     <Compile Include="ParallelRetrieveMultipleSamples.cs" />

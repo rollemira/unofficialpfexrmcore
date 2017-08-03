@@ -432,7 +432,7 @@ namespace Microsoft.Pfe.Xrm
         /// and ability to cross-reference submitted data with the plaftorm generated Id.  Note that subsequent Update requests should
         /// always instantiate a new <see cref="Entity"/> instance and assign the Id.
         /// </remarks>
-        private IEnumerable<Entity> Create(IEnumerable<Entity> targets, OrganizationServiceProxyOptions options,
+        public IEnumerable<Entity> Create(IEnumerable<Entity> targets, OrganizationServiceProxyOptions options,
             Action<Entity, FaultException<OrganizationServiceFault>> errorHandler = null)
         {
             return this.Create(targets, options, null, null, errorHandler);
@@ -452,7 +452,7 @@ namespace Microsoft.Pfe.Xrm
         /// and ability to cross-reference submitted data with the plaftorm generated Id.  Note that subsequent Update requests should
         /// always instantiate a new <see cref="Entity"/> instance and assign the Id.
         /// </remarks>
-        private IEnumerable<Entity> Create(IEnumerable<Entity> targets, OrganizationServiceProxyOptions options,
+        public IEnumerable<Entity> Create(IEnumerable<Entity> targets, OrganizationServiceProxyOptions options,
             TimeSpan slidingExpiration, Action<Entity, FaultException<OrganizationServiceFault>> errorHandler = null)
         {
             return this.Create(targets, options, null, null, errorHandler);
@@ -472,7 +472,7 @@ namespace Microsoft.Pfe.Xrm
         /// and ability to cross-reference submitted data with the plaftorm generated Id.  Note that subsequent Update requests should
         /// always instantiate a new <see cref="Entity"/> instance and assign the Id.
         /// </remarks>
-        private IEnumerable<Entity> Create(IEnumerable<Entity> targets, OrganizationServiceProxyOptions options,
+        public IEnumerable<Entity> Create(IEnumerable<Entity> targets, OrganizationServiceProxyOptions options,
             DateTime absoluteExpirationUtc, Action<Entity, FaultException<OrganizationServiceFault>> errorHandler = null)
         {
             return this.Create(targets, options, null, null, errorHandler);
